@@ -1,0 +1,17 @@
+{
+  "name": "accrmockups-backend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "device-auth-server.js",
+  "scripts": {
+    "start": "node device-auth-server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@azure/msal-node": "^2.16.2",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}

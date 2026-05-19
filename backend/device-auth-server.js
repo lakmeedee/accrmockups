@@ -9,8 +9,8 @@ app.use(express.json());
 
 const msalConfig = {
   auth: {
-    clientId: 'YOUR_CLIENT_ID', // Replace with your Azure AD App clientId
-    authority: 'https://login.microsoftonline.com/common',
+    clientId: process.env.CLIENT_ID || 'YOUR_CLIENT_ID', // Set CLIENT_ID app setting in Azure
+    authority: process.env.AUTHORITY || 'https://login.microsoftonline.com/common',
   },
 };
 const pca = new PublicClientApplication(msalConfig);
@@ -36,6 +36,7 @@ app.post('/device-login', async (req, res) => {
   }
 });
 
-app.listen(4000, () => {
-  console.log('Device auth server running on http://localhost:4000');
+const port = process.env.PORT || 4000;
+app.listen(port, () => {
+  console.log(`Device auth server running on port ${port}`);
 });
