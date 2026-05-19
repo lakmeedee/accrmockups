@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>az managedcleanroom CLI Reference</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <style>
+    :root {
+      --azure-blue: #0078d4;
+      --azure-dark: #003d6b;
+      --azure-light: #e6f2ff;
+      --bg: #ffffff;
+      --bg-alt: #f8f9fa;
+      --text: #1a1a1a;
+      --text-muted: #6c757d;
+      --border: #dee2e6;
+      --sidebar-w: 320px;
+      --code-bg: #f6f8fa;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text);
+      line-height: 1.6;
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-width: var(--sidebar-w);
+      background: var(--azure-dark);
+      color: #fff;
+      overflow-y: auto;
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      padding: 0;
+      z-index: 100;
+      transition: transform 0.3s;
+    }
+    .sidebar-header {
+      padding: 20px 16px;
+      background: rgba(0,0,0,0.15);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .sidebar-header h2 {
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+    .sidebar-header .badge {
+      display: inline-block;
+      background: var(--azure-blue);
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-top: 6px;
+    }
+    .sidebar nav { padding: 12px 0; }
+    .sidebar .nav-group {
+      margin-bottom: 4px;
+    }
+    .sidebar .nav-group-title {
+      display: flex;
+      align-items: center;
+      padding: 6px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: rgba(255,255,255,0.5);
+      cursor: pointer;
+      user-select: none;
+    }
+    .sidebar .nav-group-title:hover { color: rgba(255,255,255,0.8); }
+    .sidebar .nav-group-title .arrow {
+      margin-right: 6px;
+      transition: transform 0.2s;
+      font-size: 10px;
+    }
+    .sidebar .nav-group.collapsed .arrow { transform: rotate(-90deg); }
+    .sidebar .nav-group.collapsed .nav-items { display: none; }
+    .sidebar .nav-items a {
+      display: block;
+      padding: 4px 16px 4px 28px;
+      color: rgba(255,255,255,0.8);
+      text-decoration: none;
+      font-size: 13px;
+      line-height: 1.5;
+      border-left: 3px solid transparent;
+      transition: all 0.15s;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .sidebar .nav-items a:hover {
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      border-left-color: var(--azure-blue);
+    }
+    .sidebar .nav-items a.active {
+      background: rgba(0,120,212,0.2);
+      color: #fff;
+      border-left-color: var(--azure-blue);
+    }
+
+    /* Mobile toggle */
+    .sidebar-toggle {
+      display: none;
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 200;
+      background: var(--azure-blue);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+    @media (max-width: 900px) {
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-toggle { display: block; }
+      .main { margin-left: 0 !important; }
+    }
+
+    /* Main content */
+    .main {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      max-width: 960px;
+      padding: 40px 48px 80px;
+    }
+
+    /* Header */
+    .page-header {
+      margin-bottom: 32px;
+      padding-bottom: 24px;
+      border-bottom: 2px solid var(--azure-blue);
+    }
+    .page-header h1 {
+      font-size: 28px;
+      color: var(--azure-dark);
+      margin-bottom: 8px;
+    }
+    .page-header .meta {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .page-header .meta a { color: var(--azure-blue); }
+
+    /* Sections */
+    h2 {
+      font-size: 22px;
+      color: var(--azure-dark);
+      margin: 40px 0 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 {
+      font-size: 18px;
+      color: var(--azure-dark);
+      margin: 32px 0 8px;
+    }
+    h4 {
+      font-size: 15px;
+      color: var(--text);
+      margin: 24px 0 8px;
+    }
+
+    /* Command cards */
+    .cmd-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 16px 0 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .cmd-card .cmd-name {
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--azure-blue);
+      margin-bottom: 8px;
+      padding: 6px 10px;
+      background: var(--azure-light);
+      border-radius: 4px;
+      display: inline-block;
+    }
+    .cmd-card .cmd-desc {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+    .cmd-card .cmd-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .cmd-card .tag {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .tag-lro { background: #fff3cd; color: #856404; }
+    .tag-method { background: #d4edda; color: #155724; }
+    .tag-delete { background: #f8d7da; color: #721c24; }
+    .tag-post { background: #cce5ff; color: #004085; }
+
+    /* Param table */
+    .param-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      margin: 8px 0 16px;
+    }
+    .param-table th {
+      background: var(--bg-alt);
+      font-weight: 600;
+      text-align: left;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .param-table td {
+      padding: 5px 10px;
+      border: 1px solid var(--border);
+      vertical-align: top;
+    }
+    .param-table code {
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 12px;
+      background: var(--code-bg);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .param-required { color: #c00; font-weight: 600; }
+    .param-optional { color: var(--text-muted); }
+
+    /* Code blocks */
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px 16px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 10px 0 16px;
+    }
+    pre code {
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+    }
+    code {
+      font-family: 'Cascadia Code', 'Consolas', monospace;
+      font-size: 13px;
+    }
+    p code, li code {
+      background: var(--code-bg);
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+    p { margin: 8px 0; font-size: 14px; }
+    ul, ol { margin: 8px 0 8px 24px; font-size: 14px; }
+    li { margin: 3px 0; }
+    strong { font-weight: 600; }
+
+    /* Schema blocks */
+    .schema-block {
+      background: #f0f7ff;
+      border: 1px solid #b8d4f0;
+      border-radius: 6px;
+      padding: 16px;
+      margin: 12px 0;
+    }
+    .schema-block h4 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      color: var(--azure-dark);
+    }
+
+    /* Summary table */
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 13px;
+    }
+    .summary-table th {
+      background: var(--azure-dark);
+      color: #fff;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    .summary-table td {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    .summary-table tr:nth-child(even) { background: var(--bg-alt); }
+    .summary-table code {
+      font-size: 12px;
+      background: var(--code-bg);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+    .summary-table .count {
+      font-weight: 700;
+      color: var(--azure-blue);
+    }
+    hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+
+    /* Collapsible */
+    details {
+      margin: 10px 0;
+    }
+    details summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--azure-blue);
+      font-size: 14px;
+    }
+    details summary:hover { text-decoration: underline; }
+
+    .return-label {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--azure-dark);
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<button class="sidebar-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">☰</button>
+
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>az managedcleanroom</h2>
+    <span class="badge">CLI Reference</span>
+    <div style="margin-top:6px;font-size:12px;opacity:0.7;">API Version: 2025-10-31-preview</div>
+  </div>
+  <nav>
+    <div class="nav-group" id="nav-arm">
+      <div class="nav-group-title" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="arrow">▼</span> ARM (Management Plane)
+      </div>
+      <div class="nav-items">
+        <a href="#collaboration">collaboration</a>
+        <a href="#collaboration-create">  create</a>
+        <a href="#collaboration-show">  show</a>
+        <a href="#collaboration-list">  list</a>
+        <a href="#collaboration-delete">  delete</a>
+        <a href="#collaboration-add-collaborator">  add-collaborator</a>
+        <a href="#collaboration-enable-workload">  enable-workload</a>
+        <a href="#collaboration-pause">  pause</a>
+        <a href="#collaboration-resume">  resume</a>
+        <a href="#collaboration-recover">  recover</a>
+        <a href="#collaboration-update">  update</a>
+        <a href="#collaboration-wait">  wait</a>
+        <a href="#consortium">consortium</a>
+        <a href="#consortium-create">  create</a>
+        <a href="#consortium-show">  show</a>
+        <a href="#consortium-list">  list</a>
+        <a href="#consortium-delete">  delete</a>
+        <a href="#consortium-pause">  pause / resume / recover</a>
+        <a href="#consortium-update">  update / wait</a>
+        <a href="#consortium-view">consortium-view</a>
+        <a href="#consortium-view-contract">consortium-view contract</a>
+      </div>
+    </div>
+    <div class="nav-group" id="nav-frontend">
+      <div class="nav-group-title" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="arrow">▼</span> Frontend (Data Plane)
+      </div>
+      <div class="nav-items">
+        <a href="#frontend-configure">configure</a>
+        <a href="#frontend-login">login</a>
+        <a href="#frontend-logout">logout</a>
+        <a href="#frontend-show">show</a>
+        <a href="#frontend-collaboration-list">collaboration list</a>
+        <a href="#frontend-workloads-list">workloads list</a>
+        <a href="#frontend-analytics-show">analytics show</a>
+        <a href="#frontend-analytics-deploymentinfo">analytics deploymentinfo</a>
+        <a href="#frontend-analytics-cleanroompolicy">analytics cleanroompolicy</a>
+        <a href="#frontend-oidc">oidc issuerinfo show</a>
+        <a href="#frontend-invitation">invitation list / show / accept</a>
+        <a href="#frontend-dataset-list">dataset list</a>
+        <a href="#frontend-dataset-show">dataset show</a>
+        <a href="#frontend-dataset-publish">dataset publish</a>
+        <a href="#frontend-consent">consent check / set</a>
+        <a href="#frontend-query-list">query list</a>
+        <a href="#frontend-query-show">query show</a>
+        <a href="#frontend-query-publish">query publish</a>
+        <a href="#frontend-query-run">query run</a>
+        <a href="#frontend-query-vote">query vote accept / reject</a>
+        <a href="#frontend-runhistory">runhistory list</a>
+        <a href="#frontend-runresult">runresult show</a>
+        <a href="#frontend-auditevent">auditevent list</a>
+        <a href="#frontend-attestation">attestation cgs / cleanroom</a>
+      </div>
+    </div>
+    <div class="nav-group">
+      <div class="nav-group-title" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="arrow">▼</span> Summary
+      </div>
+      <div class="nav-items">
+        <a href="#summary">Command Count Table</a>
+      </div>
+    </div>
+  </nav>
+</aside>
+
+<main class="main">
+
+  <div class="page-header">
+    <h1>az managedcleanroom CLI Reference</h1>
+    <p class="meta">
+      Source: <a href="https://github.com/Azure/azure-cli-extensions/blob/main/src/managedcleanroom" target="_blank">Azure/azure-cli-extensions/src/managedcleanroom</a><br>
+      API Version: <code>2025-10-31-preview</code> &nbsp;|&nbsp; 58 total commands
+    </p>
+  </div>
+
+  <!-- ============================================================ -->
+  <h2 id="arm-commands">1. ARM (Management Plane) Commands</h2>
+  <p>These commands operate on the Azure Resource Manager plane. Resource path pattern:<br>
+    <code>/subscriptions/{subscriptionId}/resourceGroups/{rg}/providers/Microsoft.CleanRoom/...</code>
+  </p>
+
+  <!-- COLLABORATION -->
+  <h3 id="collaboration">1.1 &nbsp; az managedcleanroom collaboration</h3>
+
+  <details open>
+    <summary>Common ARM Response Schema — Collaboration Resource</summary>
+    <pre><code class="language-json">{
+  "id": "string (read-only)",
+  "name": "string (read-only)",
+  "type": "string (read-only)",
+  "location": "string (required)",
+  "kind": "string",
+  "tags": { "&lt;key&gt;": "string" },
+  "properties": {
+    "clusterEndpoint": "string (read-only)",
+    "consortiumArmId": "string (read-only)",
+    "consortiumType": "string (required, e.g. 'ConfidentialACI')",
+    "health": {
+      "healthState": "string (required)",
+      "healthIssues": [{ "code": "string", "message": "string" }]
+    },
+    "managedOnBehalfOfConfiguration": {
+      "moboBrokerResources": [{ "id": "string" }]
+    },
+    "provisioningState": "string (read-only)",
+    "userIdentity": {
+      "accountType": "string (required)",
+      "objectId": "string (required)",
+      "tenantId": "string (required)"
+    },
+    "workloads": [{
+      "endpoint": "string (required)",
+      "namespace": "string (required)",
+      "workloadType": "string (required)"
+    }]
+  },
+  "systemData": {
+    "createdAt": "string", "createdBy": "string", "createdByType": "string",
+    "lastModifiedAt": "string", "lastModifiedBy": "string", "lastModifiedByType": "string"
+  }
+}</code></pre>
+  </details>
+
+  <!-- collaboration create -->
+  <div class="cmd-card" id="collaboration-create">
+    <div class="cmd-name">az managedcleanroom collaboration create</div>
+    <div class="cmd-desc">Create a collaboration.</div>
+    <div class="cmd-meta">
+      <span class="tag tag-method">PUT</span>
+      <span class="tag tag-lro">--no-wait (LRO)</span>
+    </div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--collaboration-name</code></td><td class="param-required">Yes</td><td>Collaboration name (pattern: <code>^[a-zA-Z0-9][-_a-zA-Z0-9]{0,61}[a-zA-Z0-9]$</code>)</td></tr>
+      <tr><td><code>--location</code></td><td class="param-required">Yes</td><td>Azure region</td></tr>
+      <tr><td><code>--consortium-type</code></td><td class="param-required">Yes</td><td>e.g. <code>ConfidentialACI</code></td></tr>
+      <tr><td><code>--user-identity</code></td><td class="param-required">Yes</td><td>JSON: <code>{tenant-id, object-id, account-type}</code></td></tr>
+      <tr><td><code>--tags</code></td><td class="param-optional">No</td><td>Tags key=value</td></tr>
+      <tr><td><code>--kind</code></td><td class="param-optional">No</td><td>Resource kind</td></tr>
+    </table>
+    <p><strong>Example:</strong></p>
+    <pre><code class="language-bash">az managedcleanroom collaboration create \
+  --resource-group testrg \
+  --collaboration-name ContosoCollaboration \
+  --location northeurope \
+  --consortium-type ConfidentialACI \
+  --user-identity "{tenant-id:fd3c3665-...,object-id:fd3c3665-...,account-type:microsoft}"</code></pre>
+    <p class="return-label">Return Value:</p>
+    <p>Collaboration Resource (<a href="#collaboration">see schema above</a>)</p>
+  </div>
+
+  <!-- collaboration show -->
+  <div class="cmd-card" id="collaboration-show">
+    <div class="cmd-name">az managedcleanroom collaboration show</div>
+    <div class="cmd-desc">Get a collaboration.</div>
+    <div class="cmd-meta"><span class="tag tag-method">GET</span></div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--collaboration-name</code></td><td class="param-required">Yes</td><td>Collaboration name</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <p>Collaboration Resource (<a href="#collaboration">see schema above</a>)</p>
+  </div>
+
+  <!-- collaboration list -->
+  <div class="cmd-card" id="collaboration-list">
+    <div class="cmd-name">az managedcleanroom collaboration list</div>
+    <div class="cmd-desc">List collaborations in a subscription or resource group.</div>
+    <div class="cmd-meta"><span class="tag tag-method">GET</span></div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-optional">No</td><td>Scope to resource group</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">{ "value": [ /* Collaboration Resources */ ], "nextLink": "string" }</code></pre>
+  </div>
+
+  <!-- collaboration delete -->
+  <div class="cmd-card" id="collaboration-delete">
+    <div class="cmd-name">az managedcleanroom collaboration delete</div>
+    <div class="cmd-desc">Delete a collaboration. Prompts for confirmation.</div>
+    <div class="cmd-meta">
+      <span class="tag tag-delete">DELETE</span>
+      <span class="tag tag-lro">--no-wait (LRO)</span>
+    </div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--collaboration-name</code></td><td class="param-required">Yes</td><td>Collaboration name</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <p>None (HTTP 202/204)</p>
+  </div>
+
+  <!-- collaboration add-collaborator -->
+  <div class="cmd-card" id="collaboration-add-collaborator">
+    <div class="cmd-name">az managedcleanroom collaboration add-collaborator</div>
+    <div class="cmd-desc">Adds a collaborator to a collaboration.</div>
+    <div class="cmd-meta">
+      <span class="tag tag-post">POST</span>
+      <span class="tag tag-lro">--no-wait (LRO)</span>
+    </div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--collaboration-name</code></td><td class="param-required">Yes</td><td>Collaboration name</td></tr>
+      <tr><td><code>--email</code></td><td class="param-required">Yes</td><td>Collaborator email</td></tr>
+    </table>
+    <p><strong>Example:</strong></p>
+    <pre><code class="language-bash">az managedcleanroom collaboration add-collaborator \
+  --resource-group testrg \
+  --collaboration-name ContosoCollaboration \
+  --email alice@example.com</code></pre>
+    <p class="return-label">Return Value:</p>
+    <p>Collaboration Resource (<a href="#collaboration">see schema above</a>)</p>
+  </div>
+
+  <!-- collaboration enable-workload -->
+  <div class="cmd-card" id="collaboration-enable-workload">
+    <div class="cmd-name">az managedcleanroom collaboration enable-workload</div>
+    <div class="cmd-desc">Enables a workload on a collaboration.</div>
+    <div class="cmd-meta">
+      <span class="tag tag-post">POST</span>
+      <span class="tag tag-lro">--no-wait (LRO)</span>
+    </div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--collaboration-name</code></td><td class="param-required">Yes</td><td>Collaboration name</td></tr>
+      <tr><td><code>--workload-type</code></td><td class="param-required">Yes</td><td>Enum: <code>analytics</code></td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <p>Collaboration Resource (<a href="#collaboration">see schema above</a>)</p>
+  </div>
+
+  <!-- collaboration pause/resume/recover -->
+  <div class="cmd-card" id="collaboration-pause">
+    <div class="cmd-name">az managedcleanroom collaboration pause | resume | recover</div>
+    <div class="cmd-desc">Pause, resume, or recover a collaboration.</div>
+    <div class="cmd-meta">
+      <span class="tag tag-post">POST</span>
+      <span class="tag tag-lro">--no-wait (LRO)</span>
+    </div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--collaboration-name</code></td><td class="param-required">Yes</td><td>Collaboration name</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <p>Collaboration Resource (<a href="#collaboration">see schema above</a>)</p>
+  </div>
+
+  <!-- collaboration update -->
+  <div class="cmd-card" id="collaboration-update">
+    <div class="cmd-name">az managedcleanroom collaboration update</div>
+    <div class="cmd-desc">Update a collaboration.</div>
+    <div class="cmd-meta"><span class="tag tag-method">PATCH</span></div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--collaboration-name</code></td><td class="param-required">Yes</td><td>Collaboration name</td></tr>
+      <tr><td><em>(tag/property updates)</em></td><td class="param-optional">No</td><td>Fields to update</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <p>Collaboration Resource (<a href="#collaboration">see schema above</a>)</p>
+  </div>
+
+  <!-- collaboration wait -->
+  <div class="cmd-card" id="collaboration-wait">
+    <div class="cmd-name">az managedcleanroom collaboration wait</div>
+    <div class="cmd-desc">Place the CLI in a waiting state until a condition is met.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--collaboration-name</code></td><td class="param-required">Yes</td><td>Collaboration name</td></tr>
+      <tr><td><code>--created / --deleted / --exists / --updated</code></td><td class="param-optional">No</td><td>Wait flags</td></tr>
+      <tr><td><code>--interval / --timeout / --custom</code></td><td class="param-optional">No</td><td>Wait options</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <p>None (blocks until condition met)</p>
+  </div>
+
+  <hr>
+
+  <!-- CONSORTIUM -->
+  <h3 id="consortium">1.2 &nbsp; az managedcleanroom consortium</h3>
+
+  <details>
+    <summary>Common Consortium ARM Response Schema</summary>
+    <pre><code class="language-json">{
+  "id": "string", "name": "string", "type": "string",
+  "location": "string", "tags": {},
+  "properties": {
+    "consortiumType": "string",
+    "endpoint": "string (read-only)",
+    "health": { "healthState": "string", "healthIssues": [] },
+    "managedOnBehalfOfConfiguration": { "moboBrokerResources": [] },
+    "members": [{
+      "certificatePem": "string (required)",
+      "encryptionKeyPem": "string",
+      "identifier": "string (read-only)"
+    }],
+    "provisioningState": "string (read-only)",
+    "serviceCertificatePem": "string (read-only)"
+  },
+  "systemData": { ... }
+}</code></pre>
+  </details>
+
+  <div class="cmd-card" id="consortium-create">
+    <div class="cmd-name">az managedcleanroom consortium create</div>
+    <div class="cmd-desc">Create a consortium.</div>
+    <div class="cmd-meta"><span class="tag tag-method">PUT</span><span class="tag tag-lro">--no-wait (LRO)</span></div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--consortium-name / -n</code></td><td class="param-required">Yes</td><td>Consortium name</td></tr>
+      <tr><td><code>--location</code></td><td class="param-required">Yes</td><td>Azure region</td></tr>
+      <tr><td><code>--consortium-type</code></td><td class="param-optional">No</td><td>Consortium type</td></tr>
+      <tr><td><code>--members</code></td><td class="param-optional">No</td><td>JSON array of members</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <p>Consortium Resource (see schema above)</p>
+  </div>
+
+  <div class="cmd-card" id="consortium-show">
+    <div class="cmd-name">az managedcleanroom consortium show</div>
+    <div class="cmd-desc">Get a consortium.</div>
+    <div class="cmd-meta"><span class="tag tag-method">GET</span></div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--consortium-name / -n</code></td><td class="param-required">Yes</td><td>Consortium name</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>Consortium Resource</p>
+  </div>
+
+  <div class="cmd-card" id="consortium-list">
+    <div class="cmd-name">az managedcleanroom consortium list</div>
+    <div class="cmd-desc">List consortiums.</div>
+    <div class="cmd-meta"><span class="tag tag-method">GET</span></div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>Array of Consortium Resources (paginated)</p>
+  </div>
+
+  <div class="cmd-card" id="consortium-delete">
+    <div class="cmd-name">az managedcleanroom consortium delete</div>
+    <div class="cmd-desc">Delete a consortium.</div>
+    <div class="cmd-meta"><span class="tag tag-delete">DELETE</span><span class="tag tag-lro">--no-wait (LRO)</span></div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--consortium-name / -n</code></td><td class="param-required">Yes</td><td>Consortium name</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>None (HTTP 202/204)</p>
+  </div>
+
+  <div class="cmd-card" id="consortium-pause">
+    <div class="cmd-name">az managedcleanroom consortium pause | resume | recover</div>
+    <div class="cmd-desc">Pause, resume, or recover a consortium.</div>
+    <div class="cmd-meta"><span class="tag tag-post">POST</span><span class="tag tag-lro">--no-wait (LRO)</span></div>
+    <p class="return-label">Return Value:</p><p>Consortium Resource</p>
+  </div>
+
+  <div class="cmd-card" id="consortium-update">
+    <div class="cmd-name">az managedcleanroom consortium update | wait</div>
+    <div class="cmd-desc">Update a consortium / wait for a condition.</div>
+    <p class="return-label">Return Value:</p><p>Consortium Resource / None</p>
+  </div>
+
+  <hr>
+
+  <!-- CONSORTIUM-VIEW -->
+  <h3 id="consortium-view">1.3 &nbsp; az managedcleanroom consortium-view</h3>
+
+  <details>
+    <summary>Common Consortium-View ARM Response Schema</summary>
+    <pre><code class="language-json">{
+  "id": "string", "name": "string", "type": "string",
+  "location": "string", "tags": {},
+  "properties": {
+    "consortiumEndpoint": "string (required)",
+    "consortiumServiceCertificatePem": "string (required)",
+    "member": {
+      "certificatePem": "string (required)",
+      "identifier": "string (read-only)",
+      "signedPayload": "string (secret)"
+    },
+    "provisioningState": "string (read-only)"
+  },
+  "systemData": { ... }
+}</code></pre>
+  </details>
+
+  <div class="cmd-card">
+    <div class="cmd-name">az managedcleanroom consortium-view create | show | list | delete | update | wait</div>
+    <div class="cmd-desc">Full CRUD + wait for consortium-view resources.</div>
+    <div class="cmd-meta"><span class="tag tag-method">PUT / GET / DELETE / PATCH</span><span class="tag tag-lro">--no-wait (LRO)</span></div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--resource-group</code></td><td class="param-required">Yes</td><td>Resource group name</td></tr>
+      <tr><td><code>--consortium-view-name</code></td><td class="param-required">Yes</td><td>Consortium view name</td></tr>
+      <tr><td><code>--location</code></td><td class="param-required">create</td><td>Azure region</td></tr>
+      <tr><td><code>--consortium-endpoint</code></td><td class="param-required">create</td><td>Consortium endpoint</td></tr>
+      <tr><td><code>--consortium-service-certificate-pem</code></td><td class="param-required">create</td><td>Service cert PEM</td></tr>
+      <tr><td><code>--member</code></td><td class="param-required">create</td><td>JSON: <code>{certificate-pem}</code></td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>Consortium-View Resource (see schema above)</p>
+  </div>
+
+  <hr>
+
+  <!-- CONSORTIUM-VIEW CONTRACT -->
+  <h3 id="consortium-view-contract">1.4 &nbsp; az managedcleanroom consortium-view contract</h3>
+
+  <details>
+    <summary>Contract ARM Response Schema</summary>
+    <pre><code class="language-json">{
+  "id": "string", "name": "string", "type": "string", "kind": "string",
+  "properties": {
+    "contractId": "string (read-only)",
+    "deploymentPolicy": "string (read-only)",
+    "deploymentTemplate": "string (read-only)"
+  },
+  "systemData": { ... }
+}</code></pre>
+  </details>
+
+  <div class="cmd-card">
+    <div class="cmd-name">az managedcleanroom consortium-view contract list</div>
+    <div class="cmd-desc">List contracts for a consortium view.</div>
+    <div class="cmd-meta"><span class="tag tag-method">GET</span></div>
+    <p class="return-label">Return Value:</p><p>Array of Contract Resources (paginated)</p>
+  </div>
+
+  <div class="cmd-card">
+    <div class="cmd-name">az managedcleanroom consortium-view contract show</div>
+    <div class="cmd-desc">Get a contract.</div>
+    <div class="cmd-meta"><span class="tag tag-method">GET</span></div>
+    <p class="return-label">Return Value:</p><p>Contract Resource (see schema above)</p>
+  </div>
+
+  <div class="cmd-card">
+    <div class="cmd-name">az managedcleanroom consortium-view contract propose-template</div>
+    <div class="cmd-desc">Generates and proposes contract template.</div>
+    <div class="cmd-meta"><span class="tag tag-post">POST</span><span class="tag tag-lro">--no-wait (LRO)</span></div>
+    <p class="return-label">Return Value:</p><p>Contract Resource (see schema above)</p>
+  </div>
+
+  <hr>
+
+  <!-- ============================================================ -->
+  <h2 id="frontend-commands">2. Frontend (Data Plane) Commands</h2>
+  <p>
+    These commands interact with the Analytics Frontend API.<br>
+    <strong>Authentication:</strong> MSAL device code flow (<code>az managedcleanroom frontend login</code>) or Azure CLI auth (<code>az login</code>).<br>
+    <strong>Configuration:</strong> Must set API endpoint URL before use.
+  </p>
+  <details>
+    <summary>Common Error Response (HTTP 422)</summary>
+    <pre><code class="language-json">{
+  "loc": [ {} ],
+  "msg": "string",
+  "type": "string"
+}</code></pre>
+  </details>
+
+  <!-- frontend configure -->
+  <div class="cmd-card" id="frontend-configure">
+    <div class="cmd-name">az managedcleanroom frontend configure</div>
+    <div class="cmd-desc">Configure Analytics Frontend API settings. Displays current config if called without options.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--endpoint</code></td><td class="param-optional">No</td><td>API endpoint URL</td></tr>
+      <tr><td><code>--auth-scope</code></td><td class="param-optional">No</td><td>Custom auth scope</td></tr>
+    </table>
+    <p><strong>Example:</strong></p>
+    <pre><code class="language-bash">az managedcleanroom frontend configure --endpoint https://api.example.com</code></pre>
+    <p class="return-label">Return Value:</p><p>Current configuration object (JSON)</p>
+  </div>
+
+  <!-- frontend login -->
+  <div class="cmd-card" id="frontend-login">
+    <div class="cmd-name">az managedcleanroom frontend login</div>
+    <div class="cmd-desc">Authenticate using Microsoft device code flow via MSAL.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--use-microsoft-identity</code></td><td class="param-optional">No</td><td>Flag</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>Authentication status / token info</p>
+  </div>
+
+  <!-- frontend logout -->
+  <div class="cmd-card" id="frontend-logout">
+    <div class="cmd-name">az managedcleanroom frontend logout</div>
+    <div class="cmd-desc">Log out and clear cached credentials.</div>
+    <p class="return-label">Return Value:</p><p>Logout confirmation</p>
+  </div>
+
+  <!-- frontend show -->
+  <div class="cmd-card" id="frontend-show">
+    <div class="cmd-name">az managedcleanroom frontend show</div>
+    <div class="cmd-desc">Show collaboration details (via Frontend API).</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>JSON — Collaboration details object</p>
+  </div>
+
+  <!-- frontend collaboration list -->
+  <div class="cmd-card" id="frontend-collaboration-list">
+    <div class="cmd-name">az managedcleanroom frontend collaboration list</div>
+    <div class="cmd-desc">List all collaborations.</div>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">[ "collab-id-1", "collab-id-2" ]</code></pre>
+    <p>Array of collaboration ID strings.</p>
+  </div>
+
+  <!-- frontend workloads list -->
+  <div class="cmd-card" id="frontend-workloads-list">
+    <div class="cmd-name">az managedcleanroom frontend workloads list</div>
+    <div class="cmd-desc">List workloads for a collaboration.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">[ "analytics" ]</code></pre>
+  </div>
+
+  <!-- frontend analytics show -->
+  <div class="cmd-card" id="frontend-analytics-show">
+    <div class="cmd-name">az managedcleanroom frontend analytics show</div>
+    <div class="cmd-desc">Show analytics information for a collaboration.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>JSON — Analytics configuration object</p>
+  </div>
+
+  <!-- frontend analytics deploymentinfo -->
+  <div class="cmd-card" id="frontend-analytics-deploymentinfo">
+    <div class="cmd-name">az managedcleanroom frontend analytics deploymentinfo</div>
+    <div class="cmd-desc">Get deployment information for analytics workload.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>JSON — Deployment info object</p>
+  </div>
+
+  <!-- frontend analytics cleanroompolicy -->
+  <div class="cmd-card" id="frontend-analytics-cleanroompolicy">
+    <div class="cmd-name">az managedcleanroom frontend analytics cleanroompolicy</div>
+    <div class="cmd-desc">Get cleanroom policy for analytics workload.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>JSON — Cleanroom policy object</p>
+  </div>
+
+  <!-- frontend oidc -->
+  <div class="cmd-card" id="frontend-oidc">
+    <div class="cmd-name">az managedcleanroom frontend oidc issuerinfo show</div>
+    <div class="cmd-desc">Show OIDC issuer information.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>JSON — OIDC issuer information object</p>
+  </div>
+
+  <!-- frontend invitation -->
+  <div class="cmd-card" id="frontend-invitation">
+    <div class="cmd-name">az managedcleanroom frontend invitation list | show | accept</div>
+    <div class="cmd-desc">Manage collaboration invitations.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--invitation-id / -i</code></td><td class="param-required">show, accept</td><td>Invitation identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value (list):</p>
+    <pre><code class="language-json">[ "invitation-id-1", "invitation-id-2" ]</code></pre>
+    <p class="return-label">Return Value (show):</p><p>JSON — Invitation detail object</p>
+    <p class="return-label">Return Value (accept):</p><p>JSON — Acceptance result</p>
+  </div>
+
+  <hr>
+
+  <!-- frontend dataset list -->
+  <div class="cmd-card" id="frontend-dataset-list">
+    <div class="cmd-name">az managedcleanroom frontend analytics dataset list</div>
+    <div class="cmd-desc">List datasets for a collaboration.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">[ "dataset-doc-id-1", "dataset-doc-id-2" ]</code></pre>
+  </div>
+
+  <!-- frontend dataset show -->
+  <div class="cmd-card" id="frontend-dataset-show">
+    <div class="cmd-name">az managedcleanroom frontend analytics dataset show</div>
+    <div class="cmd-desc">Show dataset details.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--document-id / -d</code></td><td class="param-required">Yes</td><td>Dataset document ID</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">{
+  "data": {
+    "datasetAccessPoint": {
+      "name": "string",
+      "path": "string",
+      "protection": {
+        "proxyMode": "string",
+        "proxyType": "string",
+        "encryptionSecrets": {
+          "dek": { "name": "str", "secret": { "backingResource": { ... }, "secretType": "str" } },
+          "kek": { "name": "str", "secret": { "backingResource": { ... }, "secretType": "str" } }
+        }
+      }
+    },
+    "privacyPolicy": { "policy": {} },
+    "store": { "id": "string", "name": "string", "provider": { ... }, "type": "string" },
+    "identity": { "clientId": "string", "name": "string", "tenantId": "string" },
+    "datasetAccessPolicy": { "accessMode": "string", "allowedFields": [] },
+    "datasetSchema": { "fields": [{ "name": "string", "type": "string" }] }
+  }
+}</code></pre>
+  </div>
+
+  <!-- frontend dataset publish -->
+  <div class="cmd-card" id="frontend-dataset-publish">
+    <div class="cmd-name">az managedcleanroom frontend analytics dataset publish</div>
+    <div class="cmd-desc">Publish a dataset.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--document-id / -d</code></td><td class="param-required">Yes</td><td>Dataset document ID</td></tr>
+      <tr><td><code>--body</code></td><td class="param-required">Yes</td><td>JSON string or <code>@file</code></td></tr>
+    </table>
+    <p><strong>Request Body:</strong></p>
+    <pre><code class="language-json">{
+  "data": {
+    "datasetAccessPoint": {
+      "name": "string",
+      "path": "string",
+      "protection": { }
+    }
+  }
+}</code></pre>
+    <p class="return-label">Return Value:</p><p>JSON — Publish confirmation</p>
+  </div>
+
+  <hr>
+
+  <!-- consent -->
+  <div class="cmd-card" id="frontend-consent">
+    <div class="cmd-name">az managedcleanroom frontend consent check | set</div>
+    <div class="cmd-desc">Check or set execution consent for a document.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--document-id / -d</code></td><td class="param-required">Yes</td><td>Document identifier</td></tr>
+      <tr><td><code>--consent-action / -a</code></td><td class="param-required">set only</td><td><code>enable</code> or <code>disable</code></td></tr>
+    </table>
+    <p class="return-label">Return Value (check):</p>
+    <pre><code class="language-json">{
+  "status": "string",
+  "reason": { "code": "string", "message": "string" }
+}</code></pre>
+    <p class="return-label">Return Value (set):</p><p>JSON — Action result</p>
+  </div>
+
+  <hr>
+
+  <!-- query list -->
+  <div class="cmd-card" id="frontend-query-list">
+    <div class="cmd-name">az managedcleanroom frontend analytics query list</div>
+    <div class="cmd-desc">List queries for a collaboration.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">[ "query-doc-id-1", "query-doc-id-2" ]</code></pre>
+  </div>
+
+  <!-- query show -->
+  <div class="cmd-card" id="frontend-query-show">
+    <div class="cmd-name">az managedcleanroom frontend analytics query show</div>
+    <div class="cmd-desc">Show query details.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--document-id / -d</code></td><td class="param-required">Yes</td><td>Query document ID</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">{
+  "approvers": [{ "approverId": "string", "approverIdType": "string" }],
+  "data": {
+    "applicationType": "string",
+    "inputDataset": [{ "specification": "..." }]
+  }
+}</code></pre>
+  </div>
+
+  <!-- query publish -->
+  <div class="cmd-card" id="frontend-query-publish">
+    <div class="cmd-name">az managedcleanroom frontend analytics query publish</div>
+    <div class="cmd-desc">Publish a query.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--document-id / -d</code></td><td class="param-required">Yes</td><td>Query document ID</td></tr>
+      <tr><td><code>--body</code></td><td class="param-required">Yes</td><td>JSON string or <code>@file</code></td></tr>
+    </table>
+    <p><strong>Request Body:</strong></p>
+    <pre><code class="language-json">{
+  "inputDatasets": [{ "datasetDocumentId": "string", "view": "string" }],
+  "outputDataset": { "datasetDocumentId": "string", "view": "string" },
+  "queryData": {
+    "segments": [{
+      "data": "string",
+      "executionSequence": 0,
+      "postFilters": [{ "columnName": "string", "value": "string" }],
+      "preConditions": [{ "minRowCount": 0, "viewName": "string" }]
+    }]
+  }
+}</code></pre>
+    <p class="return-label">Return Value:</p><p>JSON — Publish confirmation</p>
+  </div>
+
+  <!-- query run -->
+  <div class="cmd-card" id="frontend-query-run">
+    <div class="cmd-name">az managedcleanroom frontend analytics query run</div>
+    <div class="cmd-desc">Run a query. Auto-generates <code>runId</code> if not provided.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--document-id / -d</code></td><td class="param-required">Yes</td><td>Query document ID</td></tr>
+      <tr><td><code>--body</code></td><td class="param-optional">No</td><td>Run config JSON or <code>@file</code></td></tr>
+    </table>
+    <p><strong>Request Body (optional):</strong></p>
+    <pre><code class="language-json">{
+  "runId": "string (auto-generated UUID if omitted)",
+  "dryRun": false,
+  "startDate": "string",
+  "endDate": "string",
+  "useOptimizer": false
+}</code></pre>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">{
+  "jobId": "string",
+  "status": "string",
+  "dryRun": false,
+  "jobIdField": "string",
+  "optimizationUsed": false,
+  "reasoning": "string",
+  "skuSettings": {
+    "driver": { "cores": 0, "memory": "string", "serviceAccount": "string" },
+    "executor": { "cores": 0, "deleteOnTermination": false, "instances": { "max": 0, "min": 0 }, "memory": "string" }
+  },
+  "x-ms-client-request-id": "string",
+  "x-ms-correlation-id": "string"
+}</code></pre>
+  </div>
+
+  <!-- query vote -->
+  <div class="cmd-card" id="frontend-query-vote">
+    <div class="cmd-name">az managedcleanroom frontend analytics query vote accept | reject</div>
+    <div class="cmd-desc">Accept or reject a query vote.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--document-id / -d</code></td><td class="param-required">Yes</td><td>Query document ID</td></tr>
+      <tr><td><code>--body</code></td><td class="param-optional">No</td><td>JSON: <code>{"proposalId": "..."}</code></td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>JSON — Vote result</p>
+  </div>
+
+  <!-- runhistory -->
+  <div class="cmd-card" id="frontend-runhistory">
+    <div class="cmd-name">az managedcleanroom frontend analytics query runhistory list</div>
+    <div class="cmd-desc">List query run history.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--document-id / -d</code></td><td class="param-required">Yes</td><td>Query document ID</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">[
+  {
+    "data": {},
+    "queryId": "string",
+    "runId": "string"
+  }
+]</code></pre>
+  </div>
+
+  <!-- runresult -->
+  <div class="cmd-card" id="frontend-runresult">
+    <div class="cmd-name">az managedcleanroom frontend analytics query runresult show</div>
+    <div class="cmd-desc">Show details of a query run result by job ID.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+      <tr><td><code>--job-id / -j</code></td><td class="param-required">Yes</td><td>Job identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">{
+  "events": [{
+    "message": "string",
+    "reason": "string",
+    "type": "string",
+    "count": 0,
+    "firstTimestamp": "2020-02-20 00:00:00",
+    "lastTimestamp": "2020-02-20 00:00:00",
+    "name": "string"
+  }],
+  "jobId": "string",
+  "status": {
+    "applicationState": { "state": "string" },
+    "terminationTime": "2020-02-20 00:00:00"
+  }
+}</code></pre>
+  </div>
+
+  <hr>
+
+  <!-- auditevent -->
+  <div class="cmd-card" id="frontend-auditevent">
+    <div class="cmd-name">az managedcleanroom frontend analytics auditevent list</div>
+    <div class="cmd-desc">List audit events for a collaboration.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">[ { /* audit event objects */ } ]</code></pre>
+  </div>
+
+  <!-- attestation -->
+  <div class="cmd-card" id="frontend-attestation">
+    <div class="cmd-name">az managedcleanroom frontend attestation cgs</div>
+    <div class="cmd-desc">Get CGS attestation report.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p><p>JSON — CGS attestation report object</p>
+  </div>
+
+  <div class="cmd-card">
+    <div class="cmd-name">az managedcleanroom frontend analytics attestationreport cleanroom</div>
+    <div class="cmd-desc">Get cleanroom attestation report.</div>
+    <table class="param-table">
+      <tr><th>Parameter</th><th>Required</th><th>Description</th></tr>
+      <tr><td><code>--collaboration-id / -c</code></td><td class="param-required">Yes</td><td>Collaboration identifier</td></tr>
+    </table>
+    <p class="return-label">Return Value:</p>
+    <pre><code class="language-json">{
+  "platform": "string",
+  "reportDataPayload": "string",
+  "report": {
+    "attestation": "string",
+    "platformCertificates": "string",
+    "uvmEndorsements": "string"
+  }
+}</code></pre>
+  </div>
+
+  <hr>
+
+  <!-- SUMMARY -->
+  <h2 id="summary">Summary: Complete Command Count</h2>
+  <table class="summary-table">
+    <tr><th>Category</th><th>Commands</th><th>Count</th></tr>
+    <tr><td><code>az managedcleanroom collaboration</code></td><td>create, show, list, delete, add-collaborator, enable-workload, pause, resume, recover, update, wait</td><td class="count">11</td></tr>
+    <tr><td><code>az managedcleanroom consortium</code></td><td>create, show, list, delete, pause, resume, recover, update, wait</td><td class="count">9</td></tr>
+    <tr><td><code>az managedcleanroom consortium-view</code></td><td>create, show, list, delete, update, wait</td><td class="count">6</td></tr>
+    <tr><td><code>az managedcleanroom consortium-view contract</code></td><td>list, show, propose-template</td><td class="count">3</td></tr>
+    <tr><td><code>frontend</code> (config/auth)</td><td>configure, login, logout, show</td><td class="count">4</td></tr>
+    <tr><td><code>frontend collaboration</code></td><td>list</td><td class="count">1</td></tr>
+    <tr><td><code>frontend workloads</code></td><td>list</td><td class="count">1</td></tr>
+    <tr><td><code>frontend analytics</code></td><td>show, deploymentinfo, cleanroompolicy</td><td class="count">3</td></tr>
+    <tr><td><code>frontend oidc issuerinfo</code></td><td>show</td><td class="count">1</td></tr>
+    <tr><td><code>frontend invitation</code></td><td>list, show, accept</td><td class="count">3</td></tr>
+    <tr><td><code>frontend analytics dataset</code></td><td>list, show, publish</td><td class="count">3</td></tr>
+    <tr><td><code>frontend consent</code></td><td>check, set</td><td class="count">2</td></tr>
+    <tr><td><code>frontend analytics query</code></td><td>list, show, publish, run</td><td class="count">4</td></tr>
+    <tr><td><code>frontend analytics query vote</code></td><td>accept, reject</td><td class="count">2</td></tr>
+    <tr><td><code>frontend analytics query runhistory</code></td><td>list</td><td class="count">1</td></tr>
+    <tr><td><code>frontend analytics query runresult</code></td><td>show</td><td class="count">1</td></tr>
+    <tr><td><code>frontend analytics auditevent</code></td><td>list</td><td class="count">1</td></tr>
+    <tr><td><code>frontend attestation</code></td><td>cgs</td><td class="count">1</td></tr>
+    <tr><td><code>frontend analytics attestationreport</code></td><td>cleanroom</td><td class="count">1</td></tr>
+    <tr><td colspan="2"><strong>Total</strong></td><td class="count"><strong>58</strong></td></tr>
+  </table>
+
+  <hr>
+  <p style="font-size:12px;color:var(--text-muted);text-align:center;margin-top:40px;">
+    Generated from <a href="https://github.com/Azure/azure-cli-extensions/blob/main/src/managedcleanroom">azure-cli-extensions source</a> &bull; API Version 2025-10-31-preview
+  </p>
+
+</main>
+
+<script>
+  hljs.highlightAll();
+
+  // Highlight active nav link on scroll
+  const sections = document.querySelectorAll('[id]');
+  const navLinks = document.querySelectorAll('.sidebar .nav-items a');
+  window.addEventListener('scroll', () => {
+    let current = '';
+    sections.forEach(s => {
+      if (window.scrollY >= s.offsetTop - 100) current = s.id;
+    });
+    navLinks.forEach(a => {
+      a.classList.remove('active');
+      if (a.getAttribute('href') === '#' + current) a.classList.add('active');
+    });
+  });
+
+  // Close sidebar on mobile after clicking a link
+  navLinks.forEach(a => {
+    a.addEventListener('click', () => {
+      if (window.innerWidth <= 900) document.querySelector('.sidebar').classList.remove('open');
+    });
+  });
+</script>
+
+</body>
+</html>

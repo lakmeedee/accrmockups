@@ -1,0 +1,2756 @@
+import React, { useState, useEffect } from 'react';
+
+type Dataset = {
+  name: string;
+  provider: string;
+  encryption: string;
+  columns: { name: string; type: string; approved: boolean }[];
+  schema: any;
+  azureArmId: string;
+  azureIdentity: string;
+  azureKeyArmId: string;
+  cleanroomPolicy: string;
+  s3Bucket: string;
+  s3Secret: string;
+  s3EncryptionKey: string;
+  dataSinks: DataSink[];
+  cleanroomId?: string;
+};
+
+type DataSink = {
+  id: string;
+  name: string;
+  type: 'azure-blob' | 'azure-table' | 's3' | 'redshift';
+  outputSchema?: string;
+  config: {
+    connectionString?: string;
+    containerName?: string;
+    tableName?: string;
+    bucketName?: string;
+    region?: string;
+    accessKey?: string;
+    secretKey?: string;
+    endpoint?: string;
+    database?: string;
+    schema?: string;
+    encryption?: string;
+    armId?: string;
+    identity?: string;
+    keyArmId?: string;
+    cleanroomPolicy?: string;
+    secret?: string;
+    encryptionKey?: string;
+  };
+  enabled: boolean;
+};
+
+interface PublishDatasetsPageProps {
+  datasets: Dataset[];
+  setDatasets: React.Dispatch<React.SetStateAction<Dataset[]>>;
+  dataSinks: DataSink[];
+  setDataSinks: React.Dispatch<React.SetStateAction<DataSink[]>>;
+  loggedInUser: { name: string; email: string; org: string; status: string; role: string };
+  activeCleanroom?: any;
+}
+
+export const PublishDatasetsPage: React.FC<PublishDatasetsPageProps> = ({ datasets, setDatasets, dataSinks, setDataSinks, loggedInUser, activeCleanroom }) => {
+
+  const [provider, setProvider] = useState<'azure' | 's3' | ''>('');
+  const [encryption, setEncryption] = useState<'SSE' | 'CPK' | ''>('');
+  const [name, setName] = useState('');
+  const [schema, setSchema] = useState<any>(null);
+  const [schemaFile, setSchemaFile] = useState<string>('');
+  const [columns, setColumns] = useState<{ name: string; type: string; approved: boolean }[]>([]);
+  
+  // Data Sink state
+  const [dataSinkType, setDataSinkType] = useState<'azure-blob' | 'azure-table' | 's3' | 'redshift' | ''>('');
+  const [dataSinkName, setDataSinkName] = useState('');
+  const [dataSinkConfig, setDataSinkConfig] = useState<DataSink['config']>({});
+  const [dataSinkEnabled, setDataSinkEnabled] = useState(true);
+  const [outputSchema, setOutputSchema] = useState('');
+  const [outputSchemaFile, setOutputSchemaFile] = useState<string>('');
+  
+  // Search and filter states for better Azure resource selection
+  const [storageSearchTerm, setStorageSearchTerm] = useState('');
+  const [storageResourceGroupFilter, setStorageResourceGroupFilter] = useState('');
+  const [storageLocationFilter, setStorageLocationFilter] = useState('');
+  
+  // Managed Identity search and filters
+  const [identitySearchTerm, setIdentitySearchTerm] = useState('');
+  const [identityResourceGroupFilter, setIdentityResourceGroupFilter] = useState('');
+  
+  // Key Vault search and filters
+  const [keySearchTerm, setKeySearchTerm] = useState('');
+  const [keyVaultFilter, setKeyVaultFilter] = useState('');
+  const [keyVersionFilter, setKeyVersionFilter] = useState('');
+  
+  // Withdraw consent state
+  const [showWithdrawConfirm, setShowWithdrawConfirm] = useState<number | null>(null);
+  
+  // Azure fields
+  const [azureArmId, setAzureArmId] = useState('');
+  const [azureIdentity, setAzureIdentity] = useState('');
+  const [azureKeyArmId, setAzureKeyArmId] = useState('');
+  const [cleanroomPolicy, setCleanroomPolicy] = useState('');
+  // CPK specific - DEK and KEK locations
+  const [wrappedDEKLocation, setWrappedDEKLocation] = useState('');
+  const [kekLocation, setKEKLocation] = useState('');
+  // S3 fields
+  const [s3Bucket, setS3Bucket] = useState('');
+  const [s3Secret, setS3Secret] = useState('');
+  const [s3EncryptionKey, setS3EncryptionKey] = useState('');
+
+  // Azure Portal Integration state
+  const [isAzureAuthenticated, setIsAzureAuthenticated] = useState(false);
+  const [azureAuthenticating] = useState(false);
+  const [azureUser, setAzureUser] = useState<{ name: string; email: string; tenantId: string } | null>(null);
+  const [azureSubscriptions, setAzureSubscriptions] = useState<Array<{ id: string; name: string; tenantId: string }>>([]);
+  const [selectedSubscription, setSelectedSubscription] = useState<string>('');
+  const [storageAccounts, setStorageAccounts] = useState<Array<{ 
+    name: string; 
+    armId: string; 
+    resourceGroup: string; 
+    location: string;
+    subscription: string;
+    tier: string;
+    kind: string;
+  }>>([]);
+  const [managedIdentities, setManagedIdentities] = useState<Array<{ 
+    name: string; 
+    armId: string; 
+    clientId: string; 
+    resourceGroup: string;
+    location: string;
+    subscription: string;
+  }>>([]);
+  const [keyVaultKeys, setKeyVaultKeys] = useState<Array<{ 
+    name: string; 
+    armId: string; 
+    keyVault: string; 
+    version: string;
+    resourceGroup: string;
+    location: string;
+    subscription: string;
+    type?: 'keyvault' | 'mhsm';
+  }>>([]);
+  const [managedHSMs, setManagedHSMs] = useState<Array<{ 
+    name: string; 
+    armId: string; 
+    resourceGroup: string;
+    location: string;
+    subscription: string;
+    keys: Array<{
+      name: string;
+      armId: string;
+      version: string;
+    }>;
+  }>>([]);
+  const [showAzureResourceSelector, setShowAzureResourceSelector] = useState(false);
+  const [azureResourcesLoading, setAzureResourcesLoading] = useState(false);
+  const [selectedResourceType, setSelectedResourceType] = useState<'input' | 'output' | null>(null);
+  const [browseResourceType, setBrowseResourceType] = useState<'storage' | 'identity' | 'key' | 'dek' | 'kek' | null>(null);
+
+  // Azure Authentication Modal state
+  const [showAzureAuthModal, setShowAzureAuthModal] = useState(false);
+  const [azureAuthStep, setAzureAuthStep] = useState<'login' | '2fa' | 'processing'>('login');
+  const [azureEmail, setAzureEmail] = useState('');
+  const [azurePassword, setAzurePassword] = useState('');
+  const [azure2faCode, setAzure2faCode] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [isProcessingAuth, setIsProcessingAuth] = useState(false);
+  
+  // Federation state for individual managed identities
+  const [federatedIdentities, setFederatedIdentities] = useState<Set<string>>(new Set());
+  const [processingFederation, setProcessingFederation] = useState<Set<string>>(new Set());
+
+  // Restore Azure user from localStorage on component mount
+  useEffect(() => {
+    const storedAzureUser = localStorage.getItem('azureUser');
+    const storedAzureSubscriptions = localStorage.getItem('azureSubscriptions');
+    const storedSelectedSubscription = localStorage.getItem('selectedSubscription');
+    const storedStorageAccounts = localStorage.getItem('storageAccounts');
+    
+    if (storedAzureUser) {
+      try {
+        const user = JSON.parse(storedAzureUser);
+        setAzureUser(user);
+        setIsAzureAuthenticated(true);
+        
+        // Restore subscriptions if available
+        if (storedAzureSubscriptions) {
+          const subscriptions = JSON.parse(storedAzureSubscriptions);
+          setAzureSubscriptions(subscriptions);
+        }
+        
+        // Restore selected subscription if available
+        if (storedSelectedSubscription) {
+          setSelectedSubscription(storedSelectedSubscription);
+        }
+        
+        // Restore storage accounts if available
+        if (storedStorageAccounts) {
+          const accounts = JSON.parse(storedStorageAccounts);
+          setStorageAccounts(accounts);
+        }
+        
+      } catch (error) {
+        console.error('Failed to parse stored Azure data:', error);
+        localStorage.removeItem('azureUser');
+        localStorage.removeItem('azureSubscriptions');
+        localStorage.removeItem('selectedSubscription');
+        localStorage.removeItem('storageAccounts');
+      }
+    }
+  }, []);
+
+  // Handle schema upload (JSON)
+  const handleSchemaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        let columnsArr: { name: string; type: string }[] = [];
+        if (Array.isArray(json.columns)) {
+          // Standard format
+          columnsArr = json.columns.map((col: any) => ({ name: col.name, type: col.type }));
+        } else {
+          // Flat object format
+          columnsArr = Object.entries(json).map(([name, val]: [string, any]) => ({ name, type: val.type }));
+        }
+        setSchema(json);
+        setSchemaFile(file.name);
+        setColumns(columnsArr.map(col => ({ ...col, approved: false })));
+      } catch {
+        alert('Invalid JSON schema file');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Handle output schema upload (JSON)
+  const handleOutputSchemaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target?.result as string);
+        setOutputSchema(JSON.stringify(json, null, 2));
+        setOutputSchemaFile(file.name);
+      } catch {
+        alert('Invalid JSON schema file');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Column approval toggle
+  const toggleColumnApproval = (colName: string) => {
+    setColumns(cols => cols.map(col => col.name === colName ? { ...col, approved: !col.approved } : col));
+  };
+
+  // Fetch cleanroom policy (mock)
+  const fetchCleanroomPolicy = () => {
+    setCleanroomPolicy('Fetched cleanroom policy from backend (mock)');
+  };
+
+  // Azure Portal Integration Functions
+  const authenticateWithAzure = () => {
+    setShowAzureAuthModal(true);
+    setAzureAuthStep('login');
+    setAzureEmail('');
+    setAzurePassword('');
+    setAzure2faCode('');
+    setAuthError('');
+  };
+
+  // Federation function
+  // Individual federation handler for managed identities
+  const handleFederateIdentity = async (identityId: string) => {
+    if (!azureUser || !activeCleanroom) {
+      return;
+    }
+
+    setProcessingFederation(prev => new Set(prev).add(identityId));
+
+    try {
+      // Simulate federation process
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Mock successful federation
+      setFederatedIdentities(prev => new Set(prev).add(identityId));
+      
+    } catch (error) {
+      console.error('Federation failed:', error);
+    } finally {
+      setProcessingFederation(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(identityId);
+        return newSet;
+      });
+    }
+  };
+
+  const handleAzureLogin = async () => {
+    setAuthError('');
+    setIsProcessingAuth(true);
+
+    // Validate inputs
+    if (!azureEmail || !azurePassword) {
+      setAuthError('Please enter both email and password');
+      setIsProcessingAuth(false);
+      return;
+    }
+
+    // Simulate login validation delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Simple validation (for demo purposes)
+    const validEmails = [loggedInUser.email, 'admin@contoso.com', 'admin@fabrikam.com'];
+    if (!validEmails.includes(azureEmail.toLowerCase())) {
+      setAuthError('Invalid email or password');
+      setIsProcessingAuth(false);
+      return;
+    }
+
+    if (azurePassword.length < 6) {
+      setAuthError('Invalid email or password');
+      setIsProcessingAuth(false);
+      return;
+    }
+
+    // Move to 2FA step
+    setAzureAuthStep('2fa');
+    setIsProcessingAuth(false);
+  };
+
+  const handleAzure2FA = async () => {
+    setAuthError('');
+    setIsProcessingAuth(true);
+
+    // Validate 2FA code
+    if (!azure2faCode || azure2faCode.length !== 6) {
+      setAuthError('Please enter a valid 6-digit verification code');
+      setIsProcessingAuth(false);
+      return;
+    }
+
+    // Simulate 2FA validation delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Simple 2FA validation (for demo - accept any 6 digits)
+    if (!/^\d{6}$/.test(azure2faCode)) {
+      setAuthError('Invalid verification code');
+      setIsProcessingAuth(false);
+      return;
+    }
+
+    // Complete authentication
+    setAzureAuthStep('processing');
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Mock successful authentication
+    const mockUser = {
+      name: loggedInUser.name,
+      email: loggedInUser.email,
+      tenantId: loggedInUser.org === 'Contoso' ? 'contoso-tenant-1234-5678-90ab-cdef' : 'fabrikam-tenant-abcd-efgh-ijkl-mnop'
+    };
+
+    const mockSubscriptions = [
+      { id: 'prod-subscription', name: 'Production Subscription', tenantId: mockUser.tenantId },
+      { id: 'dev-subscription', name: 'Development Subscription', tenantId: mockUser.tenantId },
+      { id: 'analytics-subscription', name: 'Analytics Subscription', tenantId: mockUser.tenantId }
+    ];
+
+    setAzureUser(mockUser);
+    localStorage.setItem('azureUser', JSON.stringify(mockUser));
+    setAzureSubscriptions(mockSubscriptions);
+    localStorage.setItem('azureSubscriptions', JSON.stringify(mockSubscriptions));
+    setIsAzureAuthenticated(true);
+    setShowAzureAuthModal(false);
+    setIsProcessingAuth(false);
+  };
+
+  const closeAuthModal = () => {
+    setShowAzureAuthModal(false);
+    setAzureAuthStep('login');
+    setAzureEmail('');
+    setAzurePassword('');
+    setAzure2faCode('');
+    setAuthError('');
+    setIsProcessingAuth(false);
+  };
+
+  const loadAzureResources = async (subscriptionId: string) => {
+    if (!subscriptionId) return;
+    
+    setAzureResourcesLoading(true);
+    
+    // Simulate loading Azure resources
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    const mockStorageAccounts = [
+      { 
+        name: 'publisherdata001', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/data-rg/providers/Microsoft.Storage/storageAccounts/publisherdata001`, 
+        resourceGroup: 'data-rg', 
+        location: 'East US',
+        subscription: subscriptionId,
+        tier: 'Standard',
+        kind: 'StorageV2'
+      },
+      { 
+        name: 'analyticsstore', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/analytics-rg/providers/Microsoft.Storage/storageAccounts/analyticsstore`, 
+        resourceGroup: 'analytics-rg', 
+        location: 'West US 2',
+        subscription: subscriptionId,
+        tier: 'Premium',
+        kind: 'FileStorage'
+      },
+      { 
+        name: 'cleanroomdata', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/cleanroom-rg/providers/Microsoft.Storage/storageAccounts/cleanroomdata`, 
+        resourceGroup: 'cleanroom-rg', 
+        location: 'Central US',
+        subscription: subscriptionId,
+        tier: 'Standard',
+        kind: 'BlobStorage'
+      },
+      { 
+        name: 'datawarehouse001', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/warehouse-rg/providers/Microsoft.Storage/storageAccounts/datawarehouse001`, 
+        resourceGroup: 'warehouse-rg', 
+        location: 'North Europe',
+        subscription: subscriptionId,
+        tier: 'Premium',
+        kind: 'StorageV2'
+      },
+      { 
+        name: 'backupstore', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/backup-rg/providers/Microsoft.Storage/storageAccounts/backupstore`, 
+        resourceGroup: 'backup-rg', 
+        location: 'South Central US',
+        subscription: subscriptionId,
+        tier: 'Standard',
+        kind: 'StorageV2'
+      }
+    ];
+    
+    const mockManagedIdentities = [
+      { 
+        name: 'publisher-identity', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/data-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/publisher-identity`, 
+        clientId: 'client-1234-5678', 
+        resourceGroup: 'data-rg',
+        location: 'East US',
+        subscription: subscriptionId
+      },
+      { 
+        name: 'analytics-identity', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/analytics-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/analytics-identity`, 
+        clientId: 'client-abcd-efgh', 
+        resourceGroup: 'analytics-rg',
+        location: 'West US 2',
+        subscription: subscriptionId
+      },
+      { 
+        name: 'cleanroom-identity', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/cleanroom-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/cleanroom-identity`, 
+        clientId: 'client-wxyz-1234', 
+        resourceGroup: 'cleanroom-rg',
+        location: 'Central US',
+        subscription: subscriptionId
+      },
+      { 
+        name: 'backup-identity', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/backup-rg/providers/Microsoft.ManagedIdentity/userAssignedIdentities/backup-identity`, 
+        clientId: 'client-9876-5432', 
+        resourceGroup: 'backup-rg',
+        location: 'South Central US',
+        subscription: subscriptionId
+      }
+    ];
+    
+    const mockKeyVaultKeys = [
+      { 
+        name: 'data-encryption-key', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/security-rg/providers/Microsoft.KeyVault/vaults/security-kv/keys/data-encryption-key`, 
+        keyVault: 'security-kv', 
+        version: 'latest',
+        resourceGroup: 'security-rg',
+        location: 'East US',
+        subscription: subscriptionId
+      },
+      { 
+        name: 'publisher-key', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/data-rg/providers/Microsoft.KeyVault/vaults/publisher-kv/keys/publisher-key`, 
+        keyVault: 'publisher-kv', 
+        version: 'v1.0',
+        resourceGroup: 'data-rg',
+        location: 'East US',
+        subscription: subscriptionId
+      },
+      { 
+        name: 'analytics-key', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/analytics-rg/providers/Microsoft.KeyVault/vaults/analytics-kv/keys/analytics-key`, 
+        keyVault: 'analytics-kv', 
+        version: 'latest',
+        resourceGroup: 'analytics-rg',
+        location: 'West US 2',
+        subscription: subscriptionId
+      },
+      { 
+        name: 'backup-encryption-key', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/backup-rg/providers/Microsoft.KeyVault/vaults/backup-kv/keys/backup-encryption-key`, 
+        keyVault: 'backup-kv', 
+        version: 'v2.1',
+        resourceGroup: 'backup-rg',
+        location: 'South Central US',
+        subscription: subscriptionId
+      }
+    ];
+    
+    const mockManagedHSMs = [
+      { 
+        name: 'security-mhsm', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/security-rg/providers/Microsoft.KeyVault/managedHSMs/security-mhsm`, 
+        resourceGroup: 'security-rg',
+        location: 'East US',
+        subscription: subscriptionId,
+        keys: [
+          {
+            name: 'kek-primary',
+            armId: `/subscriptions/${subscriptionId}/resourceGroups/security-rg/providers/Microsoft.KeyVault/managedHSMs/security-mhsm/keys/kek-primary`,
+            version: 'latest'
+          },
+          {
+            name: 'kek-secondary',
+            armId: `/subscriptions/${subscriptionId}/resourceGroups/security-rg/providers/Microsoft.KeyVault/managedHSMs/security-mhsm/keys/kek-secondary`,
+            version: 'v1.0'
+          }
+        ]
+      },
+      { 
+        name: 'enterprise-mhsm', 
+        armId: `/subscriptions/${subscriptionId}/resourceGroups/enterprise-rg/providers/Microsoft.KeyVault/managedHSMs/enterprise-mhsm`, 
+        resourceGroup: 'enterprise-rg',
+        location: 'West US 2',
+        subscription: subscriptionId,
+        keys: [
+          {
+            name: 'master-kek',
+            armId: `/subscriptions/${subscriptionId}/resourceGroups/enterprise-rg/providers/Microsoft.KeyVault/managedHSMs/enterprise-mhsm/keys/master-kek`,
+            version: 'latest'
+          },
+          {
+            name: 'backup-kek',
+            armId: `/subscriptions/${subscriptionId}/resourceGroups/enterprise-rg/providers/Microsoft.KeyVault/managedHSMs/enterprise-mhsm/keys/backup-kek`,
+            version: 'v2.0'
+          }
+        ]
+      }
+    ];
+
+    // Add mHSM keys to the keyVaultKeys array with type indication
+    const mhsmKeys = mockManagedHSMs.flatMap(hsm => 
+      hsm.keys.map(key => ({
+        name: key.name,
+        armId: key.armId,
+        keyVault: hsm.name,
+        version: key.version,
+        resourceGroup: hsm.resourceGroup,
+        location: hsm.location,
+        subscription: hsm.subscription,
+        type: 'mhsm' as const
+      }))
+    );
+
+    const keyVaultKeysWithType = mockKeyVaultKeys.map(key => ({
+      ...key,
+      type: 'keyvault' as const
+    }));
+
+    setStorageAccounts(mockStorageAccounts);
+    localStorage.setItem('storageAccounts', JSON.stringify(mockStorageAccounts));
+    setManagedIdentities(mockManagedIdentities);
+    setManagedHSMs(mockManagedHSMs);
+    setKeyVaultKeys([...keyVaultKeysWithType, ...mhsmKeys]);
+    setAzureResourcesLoading(false);
+  };
+
+  const openAzureResourceSelector = (resourceType: 'input' | 'output', browseType: 'storage' | 'identity' | 'key' | 'dek' | 'kek') => {
+    setSelectedResourceType(resourceType);
+    setBrowseResourceType(browseType);
+    setShowAzureResourceSelector(true);
+    if (selectedSubscription) {
+      loadAzureResources(selectedSubscription);
+    }
+  };
+
+  const selectAzureStorageAccount = (storageAccount: { name: string; armId: string; resourceGroup: string; location: string }) => {
+    if (selectedResourceType === 'input') {
+      setAzureArmId(storageAccount.armId);
+    } else if (selectedResourceType === 'output') {
+      updateDataSinkConfig('armId', storageAccount.armId);
+    }
+  };
+
+  const selectAzureManagedIdentity = (identity: { name: string; armId: string; clientId: string; resourceGroup: string }) => {
+    if (selectedResourceType === 'input') {
+      setAzureIdentity(identity.armId);
+    } else if (selectedResourceType === 'output') {
+      updateDataSinkConfig('identity', identity.armId);
+    }
+  };
+
+  const selectAzureKeyVaultKey = (key: { name: string; armId: string; keyVault: string; version: string }) => {
+    if (selectedResourceType === 'input') {
+      if (browseResourceType === 'dek') {
+        setWrappedDEKLocation(key.armId);
+      } else if (browseResourceType === 'kek') {
+        setKEKLocation(key.armId);
+      } else {
+        setAzureKeyArmId(key.armId);
+      }
+    } else if (selectedResourceType === 'output') {
+      updateDataSinkConfig('keyArmId', key.armId);
+    }
+  };
+
+  // Helper functions for storage account filtering and search
+  const getFilteredStorageAccounts = () => {
+    return storageAccounts.filter(account => {
+      const matchesSearch = !storageSearchTerm || account.name.toLowerCase().includes(storageSearchTerm.toLowerCase());
+      const matchesResourceGroup = !storageResourceGroupFilter || account.resourceGroup === storageResourceGroupFilter;
+      const matchesLocation = !storageLocationFilter || account.location === storageLocationFilter;
+      
+      return matchesSearch && matchesResourceGroup && matchesLocation;
+    });
+  };
+
+  const getUniqueResourceGroups = () => {
+    return [...new Set(storageAccounts.map(account => account.resourceGroup))].sort();
+  };
+
+  const getUniqueLocations = () => {
+    return [...new Set(storageAccounts.map(account => account.location))].sort();
+  };
+
+  // Helper functions for managed identity filtering
+  const getFilteredManagedIdentities = () => {
+    return managedIdentities.filter(identity => {
+      const matchesSearch = !identitySearchTerm || identity.name.toLowerCase().includes(identitySearchTerm.toLowerCase());
+      const matchesResourceGroup = !identityResourceGroupFilter || identity.resourceGroup === identityResourceGroupFilter;
+      
+      return matchesSearch && matchesResourceGroup;
+    });
+  };
+
+  const getUniqueIdentityResourceGroups = () => {
+    return [...new Set(managedIdentities.map(identity => identity.resourceGroup))].sort();
+  };
+
+  // Helper functions for Key Vault key filtering
+  const getFilteredKeyVaultKeys = () => {
+    return keyVaultKeys.filter(key => {
+      const matchesSearch = !keySearchTerm || key.name.toLowerCase().includes(keySearchTerm.toLowerCase());
+      const matchesKeyVault = !keyVaultFilter || key.keyVault === keyVaultFilter;
+      const matchesVersion = !keyVersionFilter || key.version === keyVersionFilter;
+      
+      return matchesSearch && matchesKeyVault && matchesVersion;
+    });
+  };
+
+  const getUniqueKeyVaults = () => {
+    return [...new Set(keyVaultKeys.map(key => key.keyVault))].sort();
+  };
+
+  const getUniqueKeyVersions = () => {
+    return [...new Set(keyVaultKeys.map(key => key.version))].sort();
+  };
+
+  const clearFilters = () => {
+    setStorageSearchTerm('');
+    setStorageResourceGroupFilter('');
+    setStorageLocationFilter('');
+  };
+
+  const clearIdentityFilters = () => {
+    setIdentitySearchTerm('');
+    setIdentityResourceGroupFilter('');
+  };
+
+  const clearKeyFilters = () => {
+    setKeySearchTerm('');
+    setKeyVaultFilter('');
+    setKeyVersionFilter('');
+  };
+
+  const highlightSearchTerm = (text: string, searchTerm: string) => {
+    if (!searchTerm) return text;
+    
+    const parts = text.split(new RegExp(`(${searchTerm})`, 'gi'));
+    return parts.map((part, index) => 
+      part.toLowerCase() === searchTerm.toLowerCase() ? 
+        <span key={index} style={{ backgroundColor: '#fff3cd', fontWeight: 600 }}>{part}</span> : 
+        part
+    );
+  };
+
+  // Publish dataset
+  const [publishError, setPublishError] = useState<string>('');
+  const publishDataset = () => {
+    if (!name || columns.length === 0) return;
+    const approvedCount = columns.filter(col => col.approved).length;
+    if (approvedCount === 0) {
+      setPublishError('You must approve at least one column before publishing.');
+      return;
+    }
+    setPublishError('');
+    // Ensure columns array is copied so future edits don't affect published dataset
+    const publishedColumns = columns.map(col => ({ ...col }));
+    
+    // Get the cleanroom ID from the active cleanroom
+    const cleanroomId = activeCleanroom?.id || 'default';
+    
+    // Get the user's organization name for the provider field
+    let userOrg = loggedInUser?.org;
+    
+    // If org is not set, derive it from email
+    if (!userOrg && loggedInUser?.email) {
+      if (loggedInUser.email.includes('@fabrikam.com')) {
+        userOrg = 'Fabrikam';
+      } else if (loggedInUser.email.includes('@contoso.com')) {
+        userOrg = 'Contoso';
+      } else if (loggedInUser.email.includes('@adventure-works.com')) {
+        userOrg = 'Adventure Works';
+      } else if (loggedInUser.email.includes('@northwind.com')) {
+        userOrg = 'Northwind';
+      }
+    }
+    
+    // Create the new dataset
+    const newDataset = { 
+      name, 
+      provider: userOrg || 'Unknown', // Use organization name instead of platform type
+      platformType: provider, // Store the platform type separately
+      encryption, 
+      columns: publishedColumns, 
+      schema, 
+      azureArmId, 
+      azureIdentity, 
+      azureKeyArmId, 
+      cleanroomPolicy, 
+      s3Bucket, 
+      s3Secret, 
+      s3EncryptionKey, 
+      dataSinks: [], // Initialize with empty data sinks array
+      cleanroomId: cleanroomId // Add the cleanroom ID
+    };
+    
+    // Add to the complete datasets array using a function that gets all datasets
+    setDatasets((prevDatasets: any[]) => [...prevDatasets, newDataset]);
+    setName('');
+    setColumns([]);
+    setSchema(null);
+    setSchemaFile('');
+    setAzureArmId('');
+    setAzureIdentity('');
+    setAzureKeyArmId('');
+    setCleanroomPolicy('');
+    setS3Bucket('');
+    setS3Secret('');
+    setS3EncryptionKey('');
+    setProvider('');
+    setEncryption('');
+  };
+
+  // Withdraw consent function
+  const handleWithdrawConsent = (datasetIndex: number) => {
+    setShowWithdrawConfirm(datasetIndex);
+  };
+
+  const confirmWithdrawConsent = (datasetIndex: number) => {
+    setDatasets((prevDatasets: any[]) => 
+      prevDatasets.filter((_, index) => index !== datasetIndex)
+    );
+    setShowWithdrawConfirm(null);
+  };
+
+  const cancelWithdrawConsent = () => {
+    setShowWithdrawConfirm(null);
+  };
+
+  // Data Sink Management Functions
+  const addDataSink = () => {
+    if (!dataSinkName || !dataSinkType) return;
+    
+    const newSink: DataSink = {
+      id: Date.now().toString(),
+      name: dataSinkName,
+      type: dataSinkType,
+      outputSchema: outputSchema.trim() || undefined,
+      config: { ...dataSinkConfig },
+      enabled: dataSinkEnabled
+    };
+    
+    setDataSinks([...dataSinks, newSink]);
+    // Reset form after successful publish
+    setDataSinkName('');
+    setDataSinkType('');
+    setDataSinkConfig({});
+    setDataSinkEnabled(true);
+    setOutputSchema('');
+    setOutputSchemaFile('');
+  };
+
+  const updateDataSinkConfig = (field: string, value: string) => {
+    setDataSinkConfig(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Info bubble helper component
+  const InfoBubble = ({ text }: { text: string }) => (
+    <div 
+      style={{ 
+        position: 'relative', 
+        display: 'inline-block',
+        cursor: 'help',
+        marginLeft: 6
+      }}
+      title={text}
+    >
+      <div style={{
+        width: 16,
+        height: 16,
+        borderRadius: '50%',
+        backgroundColor: '#0078d4',
+        color: 'white',
+        fontSize: '10px',
+        fontWeight: 'bold',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}>
+        i
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <h2>Datasets</h2>
+      
+      {/* Publish Input Datasets Section */}
+      <div style={{ marginBottom: 40, padding: 20, border: '1px solid #e1dfdd', borderRadius: 8 }}>
+        <h3>Publish Input Datasets</h3>
+        <div style={{ marginBottom: 16 }}>
+          <label>
+            Provider:
+            <select value={provider} onChange={e => setProvider(e.target.value as any)} style={{ marginLeft: 8 }}>
+              <option value="">Select</option>
+              <option value="azure">Azure Blob Storage</option>
+              <option value="s3">AWS S3</option>
+            </select>
+          </label>
+        </div>
+      {provider === 'azure' && (
+        <div style={{ marginBottom: 24, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #e1dfdd', padding: 24, maxWidth: 600 }}>
+          <h3 style={{ marginBottom: 16, color: '#0078d4' }}>Azure Blob Storage Details</h3>
+          
+          {/* Azure Authentication Section */}
+          {!isAzureAuthenticated ? (
+            <div style={{ marginBottom: 20, padding: 16, backgroundColor: '#f3f9ff', borderRadius: 6, border: '1px solid #cce7ff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <div style={{ 
+                  width: 24, 
+                  height: 24, 
+                  backgroundColor: '#0078d4', 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}>
+                  Az
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#323130' }}>Connect to Azure</div>
+                  <div style={{ fontSize: '12px', color: '#605e5c', marginTop: 2 }}>Sign in to automatically discover your storage accounts, managed identities, and encryption keys</div>
+                </div>
+              </div>
+              <button 
+                onClick={authenticateWithAzure}
+                disabled={azureAuthenticating}
+                style={{ 
+                  padding: '8px 16px', 
+                  borderRadius: 4, 
+                  background: azureAuthenticating ? '#ccc' : '#0078d4', 
+                  color: '#fff', 
+                  border: 'none',
+                  cursor: azureAuthenticating ? 'not-allowed' : 'pointer',
+                  fontSize: '13px',
+                  fontWeight: 500
+                }}
+              >
+                {azureAuthenticating ? '🔄 Signing in...' : '🔗 Sign in to Azure'}
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginBottom: 20, padding: 16, backgroundColor: '#e7f7e7', borderRadius: 6, border: '1px solid #b3d9b3' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                <div style={{ color: '#237f23', fontSize: '16px' }}>✅</div>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '14px', color: '#323130' }}>Connected to Azure Portal</div>
+                  <div style={{ fontSize: '12px', color: '#605e5c' }}>Signed in as {azureUser?.name} ({azureUser?.email})</div>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsAzureAuthenticated(false);
+                    setAzureUser(null);
+                    localStorage.removeItem('azureUser');
+                    setAzureSubscriptions([]);
+                    localStorage.removeItem('azureSubscriptions');
+                    setSelectedSubscription('');
+                    localStorage.removeItem('selectedSubscription');
+                    setStorageAccounts([]);
+                    localStorage.removeItem('storageAccounts');
+                    setManagedIdentities([]);
+                    setKeyVaultKeys([]);
+                    // Clear federation state
+                    setFederatedIdentities(new Set());
+                    setProcessingFederation(new Set());
+                  }}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 4,
+                    background: '#d13438',
+                    color: '#fff',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 500
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
+              {azureSubscriptions.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ fontWeight: 500, fontSize: '12px', color: '#605e5c' }}>SUBSCRIPTION:</label><br />
+                  <select 
+                    value={selectedSubscription} 
+                    onChange={e => {
+                      setSelectedSubscription(e.target.value);
+                      localStorage.setItem('selectedSubscription', e.target.value);
+                      if (e.target.value) loadAzureResources(e.target.value);
+                    }}
+                    style={{ marginTop: 4, width: 300, padding: 6, borderRadius: 4, border: '1px solid #e1dfdd', fontSize: '13px' }}
+                  >
+                    <option value="">Select a subscription...</option>
+                    {azureSubscriptions.map(sub => (
+                      <option key={sub.id} value={sub.id}>{sub.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+            </div>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={{ fontWeight: 500 }}>Encryption:</label><br />
+              <select value={encryption} onChange={e => setEncryption(e.target.value as any)} style={{ marginTop: 4, width: 220, padding: 6, borderRadius: 4, border: '1px solid #e1dfdd' }}>
+                <option value="">Select</option>
+                <option value="SSE">SSE</option>
+                <option value="CPK">CPK</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <label style={{ fontWeight: 500 }}>Storage Account:</label>
+                  <InfoBubble text="The Azure Storage Account where your dataset files are stored. Must be accessible by your managed identity." />
+                </div>
+                {isAzureAuthenticated && selectedSubscription && (
+                  <button
+                    onClick={() => openAzureResourceSelector('input', 'storage')}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: 3,
+                      background: '#f3f9ff',
+                      color: '#0078d4',
+                      border: '1px solid #cce7ff',
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🔍 Browse Storage Accounts
+                  </button>
+                )}
+              </div>
+              <input type="text" value={azureArmId} onChange={e => setAzureArmId(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <label style={{ fontWeight: 500 }}>Managed Identity:</label>
+                  <InfoBubble text="Azure Managed Identity that has appropriate permissions to access the storage account and encryption keys. Required for secure access without storing credentials." />
+                </div>
+                {isAzureAuthenticated && selectedSubscription && (
+                  <button
+                    onClick={() => openAzureResourceSelector('input', 'identity')}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: 3,
+                      background: '#f3f9ff',
+                      color: '#0078d4',
+                      border: '1px solid #cce7ff',
+                      fontSize: '11px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🔍 Browse Managed Identities
+                  </button>
+                )}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                <input type="text" value={azureIdentity} onChange={e => setAzureIdentity(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd' }} />
+                <button
+                  onClick={() => handleFederateIdentity(azureIdentity)}
+                  disabled={!azureUser || !azureIdentity || !activeCleanroom || processingFederation.has(azureIdentity)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 4,
+                    background: !azureUser ? '#e6e6e6' : processingFederation.has(azureIdentity) ? '#ccc' : (federatedIdentities.has(azureIdentity) ? '#107c10' : '#0078d4'),
+                    color: !azureUser ? '#999' : '#fff',
+                    border: 'none',
+                    cursor: (!azureUser || !azureIdentity || !activeCleanroom || processingFederation.has(azureIdentity)) ? 'not-allowed' : 'pointer',
+                    fontSize: '12px',
+                    fontWeight: 500,
+                    whiteSpace: 'nowrap'
+                  }}
+                >
+                  {processingFederation.has(azureIdentity)
+                    ? '🔄 Federating...'
+                    : federatedIdentities.has(azureIdentity)
+                      ? '✅ Federated'
+                      : '🔗 Federate Identity'}
+                </button>
+              </div>
+            </div>
+            {encryption === 'CPK' && (
+              <div style={{ marginTop: 16 }}>
+                {/* Step 1: Select location of Wrapped Data Encryption Key (DEK) */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                    <label style={{ fontWeight: 500, fontSize: '14px' }}>Step 1: Wrapped Data Encryption Key (DEK)</label>
+                    {isAzureAuthenticated && selectedSubscription && (
+                      <button
+                        onClick={() => openAzureResourceSelector('input', 'dek')}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: 3,
+                          background: '#f3f9ff',
+                          color: '#0078d4',
+                          border: '1px solid #cce7ff',
+                          fontSize: '11px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🔍 Browse DEK Locations
+                      </button>
+                    )}
+                  </div>
+                  <input 
+                    type="text" 
+                    value={wrappedDEKLocation} 
+                    onChange={e => setWrappedDEKLocation(e.target.value)} 
+                    placeholder="Select or enter the location of your wrapped DEK"
+                    style={{ 
+                      width: '100%', 
+                      maxWidth: 500, 
+                      padding: 8, 
+                      borderRadius: 4, 
+                      border: '1px solid #e1dfdd', 
+                      marginTop: 4
+                    }} 
+                  />
+                </div>
+
+                {/* Step 2: Fetch Cleanroom Policy */}
+                <div style={{ marginBottom: 20 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <label style={{ fontWeight: 500, fontSize: '14px' }}>Step 2: Fetch the Cleanroom Policy</label>
+                    <div 
+                      style={{ 
+                        position: 'relative', 
+                        display: 'inline-block',
+                        cursor: 'help'
+                      }}
+                      title="Use this policy to create a KEK with SKR in Azure Key Vault or Managed HSM, then select that key in Step 3."
+                    >
+                      <div style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: '50%',
+                        backgroundColor: '#0078d4',
+                        color: 'white',
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        i
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={fetchCleanroomPolicy} 
+                    style={{ 
+                      padding: '12px 24px', 
+                      borderRadius: 6, 
+                      background: '#0078d4', 
+                      color: '#fff', 
+                      border: 'none',
+                      fontSize: '14px',
+                      fontWeight: 500,
+                      cursor: 'pointer',
+                      transition: 'background-color 0.2s ease',
+                      marginBottom: 12
+                    }}
+                    onMouseOver={e => e.currentTarget.style.background = '#106ebe'}
+                    onMouseOut={e => e.currentTarget.style.background = '#0078d4'}
+                  >
+                    🔐 Fetch Cleanroom Policy
+                  </button>
+                  
+                  {/* Display Policy for Copying */}
+                  {cleanroomPolicy && (
+                    <div style={{ 
+                      padding: '16px',
+                      backgroundColor: '#f8f9fa',
+                      border: '1px solid #e1dfdd',
+                      borderRadius: 6,
+                      marginBottom: 20
+                    }}>
+                      <div style={{ 
+                        fontWeight: 600, 
+                        marginBottom: 8, 
+                        color: '#323130',
+                        fontSize: '13px'
+                      }}>
+                        📋 Cleanroom Policy (Copy this to create your KEK with SKR)
+                      </div>
+                      <div style={{
+                        backgroundColor: '#ffffff',
+                        border: '1px solid #ccc',
+                        borderRadius: 4,
+                        padding: 12,
+                        fontFamily: 'Monaco, Menlo, monospace',
+                        fontSize: '12px',
+                        color: '#333',
+                        overflowX: 'auto',
+                        position: 'relative'
+                      }}>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+{`{
+  "version": "1.0.0",
+  "anyOf": [
+    {
+      "authority": "https://fabrikam1.wus.attest.azure.net",
+      "allOf": [
+        {
+          "claim": "x-ms-attestation-type",
+          "equals": "sevsnpvm"
+        },
+        {
+          "claim": "x-ms-compliance-status",
+          "equals": "azure-compliant-uvm"
+        },
+        {
+          "claim": "x-ms-sevsnpvm-hostdata",
+          "equals": "532eaabd9574880dbf76b9b8cc00832c20a6ec113d682299550d7a6e0f345e25"
+        }
+      ]
+    }
+  ]
+}`}
+                        </pre>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(`{
+  "version": "1.0.0",
+  "anyOf": [
+    {
+      "authority": "https://fabrikam1.wus.attest.azure.net",
+      "allOf": [
+        {
+          "claim": "x-ms-attestation-type",
+          "equals": "sevsnpvm"
+        },
+        {
+          "claim": "x-ms-compliance-status",
+          "equals": "azure-compliant-uvm"
+        },
+        {
+          "claim": "x-ms-sevsnpvm-hostdata",
+          "equals": "532eaabd9574880dbf76b9b8cc00832c20a6ec113d682299550d7a6e0f345e25"
+        }
+      ]
+    }
+  ]
+}`);
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            padding: '4px 8px',
+                            background: '#0078d4',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: 3,
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          📋 Copy
+                        </button>
+                      </div>
+                      <div style={{
+                        fontSize: '12px',
+                        color: '#605e5c',
+                        marginTop: 8,
+                        fontStyle: 'italic'
+                      }}>
+                        💡 Use this policy to create a KEK with SKR in Azure Key Vault or Managed HSM, then select that KEK below in Step 3.
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Step 3: Select location of Key Encryption Key (KEK) - only show after policy is fetched */}
+                {cleanroomPolicy && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <label style={{ fontWeight: 500, fontSize: '14px' }}>Step 3: Key Encryption Key (KEK) (created with SKR from Step 2)</label>
+                      {isAzureAuthenticated && selectedSubscription && (
+                        <button
+                          onClick={() => openAzureResourceSelector('input', 'kek')}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 3,
+                            background: '#f3f9ff',
+                            color: '#0078d4',
+                            border: '1px solid #cce7ff',
+                            fontSize: '11px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          🔍 Browse KEK Locations
+                        </button>
+                      )}
+                    </div>
+                    <input 
+                      type="text" 
+                      value={kekLocation} 
+                      onChange={e => setKEKLocation(e.target.value)} 
+                      placeholder="Select or enter the location of your KEK (created with SKR from the policy above)"
+                      style={{ 
+                        width: '100%', 
+                        maxWidth: 500, 
+                        padding: 8, 
+                        borderRadius: 4, 
+                        border: '1px solid #e1dfdd', 
+                        marginTop: 4
+                      }} 
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <label style={{ fontWeight: 500 }}>Input Dataset Name:</label>
+                <InfoBubble text="A unique name for this dataset that will be used to reference it in cleanroom queries. Use descriptive names like 'customer-data' or 'sales-records'." />
+              </div>
+              <input type="text" value={name} onChange={e => setName(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+            </div>
+          </div>
+        </div>
+      )}
+      {provider === 's3' && (
+        <div style={{ marginBottom: 24, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #e1dfdd', padding: 24, maxWidth: 600 }}>
+          <h3 style={{ marginBottom: 16, color: '#0078d4' }}>AWS S3 Details</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={{ fontWeight: 500 }}>S3 Bucket URL:</label><br />
+              <input type="text" value={s3Bucket} onChange={e => setS3Bucket(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+            </div>
+            <div>
+              <label style={{ fontWeight: 500 }}>Access Key Id:</label><br />
+              <input type="text" value={s3Secret} onChange={e => setS3Secret(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+            </div>
+            <div>
+              <label style={{ fontWeight: 500 }}>Secret Access Key:</label><br />
+              <input type="text" value={s3EncryptionKey} onChange={e => setS3EncryptionKey(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <label style={{ fontWeight: 500 }}>Input Dataset Name:</label>
+                <InfoBubble text="A unique name for this dataset that will be used to reference it in cleanroom queries. Use descriptive names like 'customer-data' or 'sales-records'." />
+              </div>
+              <input type="text" value={name} onChange={e => setName(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Input Schema Section - moved below provider configuration */}
+      {provider && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4 }}>
+            <label style={{ fontWeight: 500 }}>Input Schema (Upload JSON file):</label>
+            <InfoBubble text="Upload a JSON schema file that describes the structure and data types of your input dataset. This helps ensure data compatibility in cleanroom operations." />
+          </div>
+          <input 
+            type="file" 
+            accept="application/json" 
+              onChange={handleSchemaUpload} 
+              style={{ marginTop: 4 }} 
+            />
+            {schemaFile && (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#0078d4' }}>
+                Uploaded: {schemaFile}
+              </div>
+            )}
+            {schema && (
+              <div style={{ marginTop: 8 }}>
+                <details>
+                  <summary style={{ cursor: 'pointer', fontSize: 12, color: '#605e5c' }}>View uploaded schema</summary>
+                  <pre style={{ 
+                    background: '#f8f8f8', 
+                    padding: 8, 
+                    borderRadius: 4, 
+                    fontSize: 11, 
+                    overflow: 'auto',
+                    maxHeight: 200,
+                    border: '1px solid #e1dfdd',
+                    marginTop: 4
+                  }}>
+                    {JSON.stringify(schema, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            )}
+        </div>
+      )}
+      
+      {schema && (
+        <div style={{ marginBottom: 16 }}>
+          <h4>Schema Columns</h4>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#f3f2f1' }}>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Approved</th>
+              </tr>
+            </thead>
+            <tbody>
+              {columns.map((col) => (
+                <tr key={col.name}>
+                  <td>{col.name}</td>
+                  <td>{col.type}</td>
+                  <td>
+                    <input type="checkbox" checked={col.approved} onChange={() => toggleColumnApproval(col.name)} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+  {publishError && <div style={{ color: '#a4262c', marginBottom: 8 }}>{publishError}</div>}
+          <button onClick={publishDataset} disabled={!name || columns.length === 0}>Publish Input Dataset</button>
+      <div style={{ marginTop: 32 }}>
+        <h4>Published Input Datasets</h4>
+        {datasets.length === 0 ? (
+          <p style={{ color: '#605e5c', fontStyle: 'italic' }}>No input datasets published yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {datasets.map((ds, idx) => {
+              // Check if this dataset belongs to the logged-in user
+              const userOrg = loggedInUser?.org || (
+                loggedInUser?.email?.includes('@fabrikam.com') ? 'Fabrikam' :
+                loggedInUser?.email?.includes('@contoso.com') ? 'Contoso' :
+                loggedInUser?.email?.includes('@adventure-works.com') ? 'Adventure Works' :
+                loggedInUser?.email?.includes('@northwind.com') ? 'Northwind' : 'Unknown'
+              );
+              const isUserDataset = ds.provider === userOrg;
+              
+              return (
+                <div key={idx} style={{ 
+                  border: '1px solid #e1dfdd', 
+                  borderRadius: 8, 
+                  padding: 16, 
+                  backgroundColor: '#fff' 
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <h5 style={{ margin: 0, color: '#0078d4' }}>{ds.name}</h5>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 12, color: '#605e5c' }}>
+                        {ds.columns.length} columns | {ds.provider}
+                      </span>
+                      {isUserDataset && (
+                        <button
+                          onClick={() => handleWithdrawConsent(idx)}
+                          style={{
+                            backgroundColor: '#dc3545',
+                            color: 'white',
+                            border: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '4px',
+                            fontSize: '12px',
+                            cursor: 'pointer'
+                          }}
+                          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
+                          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
+                        >
+                          Withdraw Consent
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 14, color: '#605e5c', marginBottom: 8 }}>
+                    Approved columns: {ds.columns.filter(col => col.approved).length}/{ds.columns.length}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      </div>
+      
+      {/* Publish Query Result Location Section */}
+      <div style={{ padding: 20, border: '1px solid #e1dfdd', borderRadius: 8 }}>
+        <h3>Publish Query Result Location</h3>
+        <div style={{ marginBottom: 16 }}>
+          <label>
+            Provider:
+            <select value={dataSinkType} onChange={e => setDataSinkType(e.target.value as any)} style={{ marginLeft: 8 }}>
+              <option value="">Select</option>
+              <option value="azure-blob">Azure Blob Storage</option>
+              <option value="s3">AWS S3</option>
+            </select>
+          </label>
+        </div>
+        {dataSinkType === 'azure-blob' && (
+          <div style={{ marginBottom: 24, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #e1dfdd', padding: 24, maxWidth: 600 }}>
+            <h3 style={{ marginBottom: 16, color: '#0078d4' }}>Azure Blob Storage Details</h3>
+            
+            {/* Azure Authentication Status */}
+            {!isAzureAuthenticated ? (
+              <div style={{ marginBottom: 20, padding: 16, backgroundColor: '#fff8dc', borderRadius: 6, border: '1px solid #ffd700' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ color: '#b8860b', fontSize: '16px' }}>ℹ️</div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#323130' }}>Azure Authentication Required</div>
+                    <div style={{ fontSize: '12px', color: '#605e5c' }}>Please authenticate with Azure in the "Publish Input Datasets" section above to enable storage account discovery for query results.</div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 20, padding: 16, backgroundColor: '#e7f7e7', borderRadius: 6, border: '1px solid #b3d9b3' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ color: '#237f23', fontSize: '16px' }}>✅</div>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#323130' }}>Connected to Azure</div>
+                    <div style={{ fontSize: '12px', color: '#605e5c' }}>Using existing Azure authentication from input datasets section</div>
+                  </div>
+                </div>
+                {azureSubscriptions.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <label style={{ fontWeight: 500, fontSize: '12px', color: '#605e5c' }}>SUBSCRIPTION:</label><br />
+                    <select 
+                      value={selectedSubscription} 
+                      onChange={e => {
+                        setSelectedSubscription(e.target.value);
+                        localStorage.setItem('selectedSubscription', e.target.value);
+                        if (e.target.value) loadAzureResources(e.target.value);
+                      }}
+                      style={{ marginTop: 4, width: 300, padding: 6, borderRadius: 4, border: '1px solid #e1dfdd', fontSize: '13px' }}
+                    >
+                      <option value="">Select a subscription...</option>
+                      {azureSubscriptions.map(sub => (
+                        <option key={sub.id} value={sub.id}>{sub.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <label style={{ fontWeight: 500 }}>Encryption:</label>
+                  <InfoBubble text="Choose SSE (Server Side Encryption) for standard Azure encryption, or CPK (Customer Provided Key) to use the same encryption key as input datasets." />
+                </div>
+                <select value={dataSinkConfig.encryption || ''} onChange={e => updateDataSinkConfig('encryption', e.target.value)} style={{ marginTop: 4, width: 220, padding: 6, borderRadius: 4, border: '1px solid #e1dfdd' }}>
+                  <option value="">Select</option>
+                  <option value="SSE">SSE</option>
+                  <option value="CPK">CPK</option>
+                </select>
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <label style={{ fontWeight: 500 }}>Storage Account:</label>
+                    <InfoBubble text="The Azure Storage Account where query results will be written. Can be the same as input storage or a different account." />
+                  </div>
+                  {isAzureAuthenticated && selectedSubscription && (
+                    <button
+                      onClick={() => openAzureResourceSelector('output', 'storage')}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: 3,
+                        background: '#f3f9ff',
+                        color: '#0078d4',
+                        border: '1px solid #cce7ff',
+                        fontSize: '11px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🔍 Browse Storage Accounts
+                    </button>
+                  )}
+                </div>
+                <input type="text" value={dataSinkConfig.armId || ''} onChange={e => updateDataSinkConfig('armId', e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <label style={{ fontWeight: 500 }}>Managed Identity:</label>
+                    <InfoBubble text="Azure Managed Identity with permissions to write to the output storage account. Can be the same as input managed identity if permissions allow." />
+                  </div>
+                  {isAzureAuthenticated && selectedSubscription && (
+                    <button
+                      onClick={() => openAzureResourceSelector('output', 'identity')}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: 3,
+                        background: '#f3f9ff',
+                        color: '#0078d4',
+                        border: '1px solid #cce7ff',
+                        fontSize: '11px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      🔍 Browse Managed Identities
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <input type="text" value={dataSinkConfig.identity || ''} onChange={e => updateDataSinkConfig('identity', e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd' }} />
+                  <button
+                    onClick={() => handleFederateIdentity(dataSinkConfig.identity || '')}
+                    disabled={!azureUser || !dataSinkConfig.identity || !activeCleanroom || processingFederation.has(dataSinkConfig.identity || '')}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: 4,
+                      background: !azureUser ? '#e6e6e6' : processingFederation.has(dataSinkConfig.identity || '') ? '#ccc' : (federatedIdentities.has(dataSinkConfig.identity || '') ? '#107c10' : '#0078d4'),
+                      color: !azureUser ? '#999' : '#fff',
+                      border: 'none',
+                      cursor: (!azureUser || !dataSinkConfig.identity || !activeCleanroom || processingFederation.has(dataSinkConfig.identity || '')) ? 'not-allowed' : 'pointer',
+                      fontSize: '12px',
+                      fontWeight: 500,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {processingFederation.has(dataSinkConfig.identity || '')
+                      ? '🔄 Federating...'
+                      : federatedIdentities.has(dataSinkConfig.identity || '')
+                        ? '✅ Federated'
+                        : '🔗 Federate Identity'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <label style={{ fontWeight: 500 }}>Query Result Location Name:</label>
+                  <InfoBubble text="A descriptive name for where cleanroom query results will be stored. This will be referenced when running queries to specify output location." />
+                </div>
+                <input type="text" value={dataSinkName} onChange={e => setDataSinkName(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+              </div>
+              {dataSinkConfig.encryption === 'CPK' && (
+                <div style={{ 
+                  marginTop: 16,
+                  padding: '12px',
+                  backgroundColor: '#e8f4fd',
+                  border: '1px solid #b3ddf2',
+                  borderRadius: 6
+                }}>
+                  <div style={{ 
+                    fontSize: '14px',
+                    color: '#0078d4',
+                    fontWeight: 600,
+                    marginBottom: 4
+                  }}>
+                    🔐 CPK Encryption Enabled
+                  </div>
+                  <div style={{ 
+                    fontSize: '13px',
+                    color: '#605e5c',
+                    lineHeight: 1.4
+                  }}>
+                    Query results will be encrypted using the same Customer-Provided Key (CPK) used for the input datasets. No additional key configuration is required.
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {dataSinkType === 's3' && (
+          <div style={{ marginBottom: 24, background: '#fff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', border: '1px solid #e1dfdd', padding: 24, maxWidth: 600 }}>
+            <h3 style={{ marginBottom: 16, color: '#0078d4' }}>AWS S3 Details</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div>
+                <label style={{ fontWeight: 500 }}>S3 Bucket URL:</label><br />
+                <input type="text" value={dataSinkConfig.bucketName || ''} onChange={e => updateDataSinkConfig('bucketName', e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+              </div>
+              <div>
+                <label style={{ fontWeight: 500 }}>Access Key Id:</label><br />
+                <input type="text" value={dataSinkConfig.secret || ''} onChange={e => updateDataSinkConfig('secret', e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+              </div>
+              <div>
+                <label style={{ fontWeight: 500 }}>Secret Access Key:</label><br />
+                <input type="text" value={dataSinkConfig.encryptionKey || ''} onChange={e => updateDataSinkConfig('encryptionKey', e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+              </div>
+              <div>
+                <label style={{ fontWeight: 500 }}>Query Result Location Name:</label><br />
+                <input type="text" value={dataSinkName} onChange={e => setDataSinkName(e.target.value)} style={{ width: 400, padding: 8, borderRadius: 4, border: '1px solid #e1dfdd', marginTop: 4 }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Output Schema Section - moved below data sink configuration */}
+        {dataSinkType && (
+          <div style={{ marginBottom: 16 }}>
+            <label>
+              Output Schema (Upload JSON file):
+              <br />
+              <input 
+                type="file" 
+                accept="application/json" 
+                onChange={handleOutputSchemaUpload} 
+                style={{ marginTop: 4 }} 
+              />
+              {outputSchemaFile && (
+                <div style={{ marginTop: 8, fontSize: 12, color: '#0078d4' }}>
+                  Uploaded: {outputSchemaFile}
+                </div>
+              )}
+              {outputSchema && (
+                <div style={{ marginTop: 8 }}>
+                  <details>
+                    <summary style={{ cursor: 'pointer', fontSize: 12, color: '#605e5c' }}>View uploaded schema</summary>
+                    <pre style={{ 
+                      background: '#f8f8f8', 
+                      padding: 8, 
+                      borderRadius: 4, 
+                      fontSize: 11, 
+                      overflow: 'auto',
+                      maxHeight: 200,
+                      border: '1px solid #e1dfdd',
+                      marginTop: 4
+                    }}>
+                      {outputSchema}
+                    </pre>
+                  </details>
+                </div>
+              )}
+            </label>
+          </div>
+        )}
+
+        <button onClick={addDataSink} disabled={!dataSinkName || !dataSinkType}>Publish Query Result Location</button>
+        
+        <div style={{ marginTop: 32 }}>
+          <h4>Published Query Result Locations</h4>
+          {dataSinks.length === 0 ? (
+            <p style={{ color: '#605e5c', fontStyle: 'italic' }}>No query result locations published yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {dataSinks.map((sink) => (
+                <div key={sink.id} style={{ 
+                  border: '1px solid #e1dfdd', 
+                  borderRadius: 8, 
+                  padding: 16, 
+                  backgroundColor: '#fff' 
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <h5 style={{ margin: 0, color: '#0078d4' }}>{sink.name}</h5>
+                    <span style={{ fontSize: 12, color: '#605e5c' }}>
+                      {sink.type}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 14, color: '#605e5c', marginBottom: 8 }}>
+                    Status: {sink.enabled ? 'Enabled' : 'Disabled'}
+                  </div>
+                  {sink.outputSchema && (
+                    <div style={{ fontSize: 14, color: '#605e5c' }}>
+                      <details>
+                        <summary style={{ cursor: 'pointer', fontSize: 12 }}>Output Schema</summary>
+                        <pre style={{ 
+                          background: '#f8f8f8', 
+                          padding: 8, 
+                          borderRadius: 4, 
+                          fontSize: 11, 
+                          overflow: 'auto',
+                          maxHeight: 150,
+                          border: '1px solid #e1dfdd',
+                          marginTop: 4
+                        }}>
+                          {sink.outputSchema}
+                        </pre>
+                      </details>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Azure Resource Selector Modal */}
+      {showAzureResourceSelector && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: 8,
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.15)',
+            width: '90%',
+            maxWidth: 800,
+            maxHeight: '80vh',
+            overflow: 'auto',
+            padding: 24
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h2 style={{ margin: 0, color: '#0078d4' }}>
+                Browse {browseResourceType === 'storage' ? 'Storage Accounts' : 
+                        browseResourceType === 'identity' ? 'Managed Identities' : 
+                        browseResourceType === 'dek' ? 'Wrapped DEK Location' :
+                        browseResourceType === 'kek' ? 'KEK Location (Key Vault & mHSM)' :
+                        'Encryption Keys'}
+              </h2>
+              <button
+                onClick={() => setShowAzureResourceSelector(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  color: '#605e5c'
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {azureResourcesLoading ? (
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <div style={{ fontSize: '16px', marginBottom: 8 }}>🔄 Loading Azure resources...</div>
+                <div style={{ fontSize: '14px', color: '#605e5c' }}>
+                  Discovering {browseResourceType === 'storage' ? 'storage accounts' : 
+                             browseResourceType === 'identity' ? 'managed identities' : 
+                             browseResourceType === 'dek' ? 'wrapped DEK locations' :
+                             browseResourceType === 'kek' ? 'KEK locations (Key Vault & mHSM)' :
+                             'encryption keys'}
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                {/* Storage Accounts */}
+                {browseResourceType === 'storage' && (
+                  <div>
+                    <div style={{ marginBottom: 16, padding: '12px 16px', backgroundColor: '#f8f9fa', borderRadius: 4, border: '1px solid #e1e4e8' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#24292f', marginBottom: 4 }}>Browsing Storage Accounts</div>
+                      <div style={{ fontSize: '12px', color: '#656d76' }}>Subscription: {selectedSubscription}</div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                      <h3 style={{ margin: 0, color: '#323130' }}>Storage Accounts</h3>
+                      <div style={{ fontSize: '12px', color: '#605e5c' }}>
+                        {getFilteredStorageAccounts().length} of {storageAccounts.length} accounts
+                      </div>
+                    </div>
+                    
+                    {/* Search and Filters */}
+                    <div style={{ 
+                      backgroundColor: '#f8f8f8', 
+                      padding: 16, 
+                      borderRadius: 6, 
+                      marginBottom: 16,
+                      border: '1px solid #e1dfdd'
+                    }}>
+                      {/* Search */}
+                      <div style={{ marginBottom: 12 }}>
+                        <input
+                          type="text"
+                          placeholder="Search storage accounts by name..."
+                          value={storageSearchTerm}
+                          onChange={(e) => setStorageSearchTerm(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            border: '1px solid #d1d1d1',
+                            borderRadius: 4,
+                            fontSize: '14px'
+                          }}
+                        />
+                      </div>
+                      
+                      {/* Filters */}
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        <select
+                          value={storageResourceGroupFilter}
+                          onChange={(e) => setStorageResourceGroupFilter(e.target.value)}
+                          style={{ padding: '4px 8px', fontSize: '12px', borderRadius: 4, border: '1px solid #d1d1d1' }}
+                        >
+                          <option value="">All Resource Groups</option>
+                          {getUniqueResourceGroups().map(rg => (
+                            <option key={rg} value={rg}>{rg}</option>
+                          ))}
+                        </select>
+                        
+                        <select
+                          value={storageLocationFilter}
+                          onChange={(e) => setStorageLocationFilter(e.target.value)}
+                          style={{ padding: '4px 8px', fontSize: '12px', borderRadius: 4, border: '1px solid #d1d1d1' }}
+                        >
+                          <option value="">All Locations</option>
+                          {getUniqueLocations().map(loc => (
+                            <option key={loc} value={loc}>{loc}</option>
+                          ))}
+                        </select>
+                        
+                        {(storageSearchTerm || storageResourceGroupFilter || storageLocationFilter) && (
+                          <button
+                            onClick={clearFilters}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '12px',
+                              backgroundColor: 'transparent',
+                              border: '1px solid #d1d1d1',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                              color: '#0078d4'
+                            }}
+                          >
+                            Clear Filters
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Storage Account List */}
+                    <div style={{ maxHeight: 400, overflowY: 'auto', display: 'grid', gap: 8 }}>
+                      {getFilteredStorageAccounts().length === 0 ? (
+                        <div style={{ 
+                          padding: 24, 
+                          textAlign: 'center', 
+                          color: '#605e5c',
+                          backgroundColor: '#f9f9f9',
+                          borderRadius: 6,
+                          border: '1px solid #e1dfdd'
+                        }}>
+                          <div style={{ fontSize: '16px', marginBottom: 8 }}>🔍</div>
+                          <div>No storage accounts match your search criteria</div>
+                          <div style={{ fontSize: '12px', marginTop: 4 }}>Try adjusting your filters or search terms</div>
+                        </div>
+                      ) : (
+                        getFilteredStorageAccounts().map(account => (
+                          <div
+                            key={account.armId}
+                            onClick={() => selectAzureStorageAccount(account)}
+                            style={{
+                              padding: 16,
+                              border: '1px solid #e1dfdd',
+                              borderRadius: 6,
+                              cursor: 'pointer',
+                              backgroundColor: '#ffffff',
+                              transition: 'all 0.2s ease',
+                              position: 'relative'
+                            }}
+                            onMouseOver={e => {
+                              e.currentTarget.style.backgroundColor = '#f0f8ff';
+                              e.currentTarget.style.borderColor = '#0078d4';
+                            }}
+                            onMouseOut={e => {
+                              e.currentTarget.style.backgroundColor = '#ffffff';
+                              e.currentTarget.style.borderColor = '#e1dfdd';
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontWeight: 600, fontSize: '14px', color: '#323130', marginBottom: 4 }}>
+                                  {highlightSearchTerm(account.name, storageSearchTerm)}
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#605e5c', marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 500 }}>{account.subscription}</span> • {account.resourceGroup} • {account.location}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#8a8886', fontFamily: 'Monaco, monospace' }}>
+                                  {account.armId}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                                <div style={{
+                                  padding: '2px 6px',
+                                  backgroundColor: account.tier === 'Premium' ? '#e7f7e7' : '#f3f2f1',
+                                  color: account.tier === 'Premium' ? '#237f23' : '#605e5c',
+                                  borderRadius: 3,
+                                  fontSize: '10px',
+                                  fontWeight: 500
+                                }}>
+                                  {account.tier}
+                                </div>
+                                <div style={{
+                                  fontSize: '10px',
+                                  color: '#8a8886',
+                                  backgroundColor: '#f9f9f9',
+                                  padding: '2px 6px',
+                                  borderRadius: 3
+                                }}>
+                                  {account.kind}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Managed Identities */}
+                {browseResourceType === 'identity' && (
+                  <div>
+                    <div style={{ marginBottom: 16, padding: '12px 16px', backgroundColor: '#f8f9fa', borderRadius: 4, border: '1px solid #e1e4e8' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#24292f', marginBottom: 4 }}>Browsing Managed Identities</div>
+                      <div style={{ fontSize: '12px', color: '#656d76' }}>Subscription: {selectedSubscription}</div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                      <h3 style={{ margin: 0, color: '#323130' }}>Managed Identities</h3>
+                      <div style={{ fontSize: '12px', color: '#605e5c' }}>
+                        {getFilteredManagedIdentities().length} of {managedIdentities.length} identities
+                      </div>
+                    </div>
+                    
+                    {/* Search and Filters */}
+                    <div style={{ 
+                      backgroundColor: '#f8f8f8', 
+                      padding: 16, 
+                      borderRadius: 8, 
+                      border: '1px solid #e1dfdd', 
+                      marginBottom: 16 
+                    }}>
+                      <div style={{ marginBottom: 16 }}>
+                        <input
+                          type="text"
+                          placeholder="Search managed identities..."
+                          value={identitySearchTerm}
+                          onChange={(e) => setIdentitySearchTerm(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            border: '1px solid #d1d1d1',
+                            borderRadius: 4,
+                            fontSize: '14px'
+                          }}
+                        />
+                      </div>
+                      
+                      {/* Filters */}
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        <select
+                          value={identityResourceGroupFilter}
+                          onChange={(e) => setIdentityResourceGroupFilter(e.target.value)}
+                          style={{ padding: '4px 8px', fontSize: '12px', borderRadius: 4, border: '1px solid #d1d1d1' }}
+                        >
+                          <option value="">All Resource Groups</option>
+                          {getUniqueIdentityResourceGroups().map(rg => (
+                            <option key={rg} value={rg}>{rg}</option>
+                          ))}
+                        </select>
+                        
+                        {(identitySearchTerm || identityResourceGroupFilter) && (
+                          <button
+                            onClick={clearIdentityFilters}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '12px',
+                              backgroundColor: 'transparent',
+                              border: '1px solid #d1d1d1',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                              color: '#0078d4'
+                            }}
+                          >
+                            Clear Filters
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {getFilteredManagedIdentities().length === 0 ? (
+                        <div style={{
+                          padding: '32px 16px',
+                          textAlign: 'center',
+                          color: '#605e5c',
+                          fontStyle: 'italic'
+                        }}>
+                          No managed identities match the current filters
+                        </div>
+                      ) : (
+                        getFilteredManagedIdentities().map(identity => (
+                          <div
+                            key={identity.clientId}
+                            style={{
+                              padding: 12,
+                              border: '1px solid #e1dfdd',
+                              borderRadius: 6,
+                              backgroundColor: '#f9f9f9',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div 
+                                onClick={() => selectAzureManagedIdentity(identity)}
+                                style={{ flex: 1, cursor: 'pointer' }}
+                                onMouseOver={e => {
+                                  const parentDiv = e.currentTarget.closest('div');
+                                  if (parentDiv) parentDiv.style.backgroundColor = '#f0f8ff';
+                                }}
+                                onMouseOut={e => {
+                                  const parentDiv = e.currentTarget.closest('div');
+                                  if (parentDiv) parentDiv.style.backgroundColor = '#f9f9f9';
+                                }}
+                              >
+                                <div style={{ fontWeight: 600, fontSize: '14px', color: '#323130' }}>
+                                  {highlightSearchTerm(identity.name, identitySearchTerm)}
+                                </div>
+                                <div style={{ fontSize: '12px', color: '#605e5c', marginTop: 2 }}>
+                                  <span style={{ fontWeight: 500 }}>{identity.resourceGroup}</span> • {identity.location} • Client ID: {identity.clientId}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#8a8886', marginTop: 4, wordBreak: 'break-all' }}>
+                                  {identity.armId}
+                                </div>
+                              </div>
+                              {azureUser && activeCleanroom && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleFederateIdentity(identity.armId);
+                                  }}
+                                  disabled={processingFederation.has(identity.armId)}
+                                  style={{
+                                    padding: '6px 12px',
+                                    borderRadius: 4,
+                                    background: processingFederation.has(identity.armId) ? '#ccc' : (federatedIdentities.has(identity.armId) ? '#107c10' : '#0078d4'),
+                                    color: '#fff',
+                                    border: 'none',
+                                    cursor: processingFederation.has(identity.armId) ? 'not-allowed' : 'pointer',
+                                    fontSize: '11px',
+                                    fontWeight: 500,
+                                    whiteSpace: 'nowrap',
+                                    marginLeft: 12
+                                  }}
+                                >
+                                  {processingFederation.has(identity.armId) 
+                                    ? '🔄 Federating...' 
+                                    : federatedIdentities.has(identity.armId) 
+                                      ? '✅ Federated' 
+                                      : '🔗 Federate'
+                                  }
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Key Vault Keys */}
+                {browseResourceType === 'key' && (
+                  <div>
+                    <div style={{ marginBottom: 16, padding: '12px 16px', backgroundColor: '#f8f9fa', borderRadius: 4, border: '1px solid #e1e4e8' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#24292f', marginBottom: 4 }}>Browsing Key Vault Keys</div>
+                      <div style={{ fontSize: '12px', color: '#656d76' }}>Subscription: {selectedSubscription}</div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                      <h3 style={{ margin: 0, color: '#323130' }}>Key Vault Encryption Keys</h3>
+                      <div style={{ fontSize: '12px', color: '#605e5c' }}>
+                        {getFilteredKeyVaultKeys().length} of {keyVaultKeys.length} keys
+                      </div>
+                    </div>
+                    
+                    {/* Search and Filters */}
+                    <div style={{ 
+                      backgroundColor: '#f8f8f8', 
+                      padding: 16, 
+                      borderRadius: 8, 
+                      border: '1px solid #e1dfdd', 
+                      marginBottom: 16 
+                    }}>
+                      <div style={{ marginBottom: 16 }}>
+                        <input
+                          type="text"
+                          placeholder="Search encryption keys..."
+                          value={keySearchTerm}
+                          onChange={(e) => setKeySearchTerm(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            border: '1px solid #d1d1d1',
+                            borderRadius: 4,
+                            fontSize: '14px'
+                          }}
+                        />
+                      </div>
+                      
+                      {/* Filters */}
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                        <select
+                          value={keyVaultFilter}
+                          onChange={(e) => setKeyVaultFilter(e.target.value)}
+                          style={{ padding: '4px 8px', fontSize: '12px', borderRadius: 4, border: '1px solid #d1d1d1' }}
+                        >
+                          <option value="">All Key Vaults</option>
+                          {getUniqueKeyVaults().map(kv => (
+                            <option key={kv} value={kv}>{kv}</option>
+                          ))}
+                        </select>
+                        
+                        <select
+                          value={keyVersionFilter}
+                          onChange={(e) => setKeyVersionFilter(e.target.value)}
+                          style={{ padding: '4px 8px', fontSize: '12px', borderRadius: 4, border: '1px solid #d1d1d1' }}
+                        >
+                          <option value="">All Versions</option>
+                          {getUniqueKeyVersions().map(version => (
+                            <option key={version} value={version}>{version}</option>
+                          ))}
+                        </select>
+                        
+                        {(keySearchTerm || keyVaultFilter || keyVersionFilter) && (
+                          <button
+                            onClick={clearKeyFilters}
+                            style={{
+                              padding: '4px 8px',
+                              fontSize: '12px',
+                              backgroundColor: 'transparent',
+                              border: '1px solid #d1d1d1',
+                              borderRadius: 4,
+                              cursor: 'pointer',
+                              color: '#0078d4'
+                            }}
+                          >
+                            Clear Filters
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      {getFilteredKeyVaultKeys().length === 0 ? (
+                        <div style={{
+                          padding: '32px 16px',
+                          textAlign: 'center',
+                          color: '#605e5c',
+                          fontStyle: 'italic'
+                        }}>
+                          No encryption keys match the current filters
+                        </div>
+                      ) : (
+                        getFilteredKeyVaultKeys().map(key => (
+                          <div
+                            key={key.armId}
+                            onClick={() => selectAzureKeyVaultKey(key)}
+                            style={{
+                              padding: 12,
+                              border: '1px solid #e1dfdd',
+                              borderRadius: 6,
+                              cursor: 'pointer',
+                              backgroundColor: '#f9f9f9',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseOver={e => e.currentTarget.style.backgroundColor = '#f0f8ff'}
+                            onMouseOut={e => e.currentTarget.style.backgroundColor = '#f9f9f9'}
+                          >
+                            <div style={{ fontWeight: 600, fontSize: '14px', color: '#323130' }}>
+                              {highlightSearchTerm(key.name, keySearchTerm)}
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#605e5c', marginTop: 2 }}>
+                              <span style={{ fontWeight: 500 }}>{key.keyVault}</span> • {key.resourceGroup} • {key.location} • Version: {key.version}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#8a8886', marginTop: 4, wordBreak: 'break-all' }}>
+                              {key.armId}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* DEK Location Browser */}
+                {(browseResourceType === 'dek' || browseResourceType === 'kek') && (
+                  <div>
+                    <div style={{ marginBottom: 16, padding: '12px 16px', backgroundColor: '#f8f9fa', borderRadius: 4, border: '1px solid #e1e4e8' }}>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: '#24292f', marginBottom: 4 }}>
+                        Browsing {browseResourceType === 'dek' ? 'Wrapped DEK Locations' : 'KEK Location (Key Vault & mHSM)'}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#656d76' }}>Subscription: {selectedSubscription}</div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+                      <h3 style={{ margin: 0, color: '#323130' }}>
+                        {browseResourceType === 'dek' ? 'Wrapped DEK Storage Locations' : 'KEK locations (Key Vault & mHSM)'}
+                      </h3>
+                      <div style={{ fontSize: '12px', color: '#605e5c' }}>
+                        Found {getFilteredKeyVaultKeys().length} keys
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: 16, marginBottom: 16 }}>
+                      <input
+                        type="text"
+                        placeholder={`Search ${browseResourceType === 'dek' ? 'DEK' : 'KEK'} keys...`}
+                        value={keySearchTerm}
+                        onChange={(e) => setKeySearchTerm(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 4,
+                          border: '1px solid #e1dfdd',
+                          fontSize: '14px'
+                        }}
+                      />
+                      <select
+                        value={keyVaultFilter}
+                        onChange={(e) => setKeyVaultFilter(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 4,
+                          border: '1px solid #e1dfdd',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">{browseResourceType === 'kek' ? 'All Key Vaults & mHSMs' : 'All Key Vaults'}</option>
+                        {[...new Set(keyVaultKeys.map(key => key.keyVault))].map(vault => (
+                          <option key={vault} value={vault}>{vault}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={keyVersionFilter}
+                        onChange={(e) => setKeyVersionFilter(e.target.value)}
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: 4,
+                          border: '1px solid #e1dfdd',
+                          fontSize: '14px'
+                        }}
+                      >
+                        <option value="">All Versions</option>
+                        <option value="current">Current</option>
+                        <option value="latest">Latest</option>
+                      </select>
+                    </div>
+
+                    <div style={{ maxHeight: 400, overflowY: 'auto', border: '1px solid #e1dfdd', borderRadius: 4 }}>
+                      {getFilteredKeyVaultKeys().length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: 40, color: '#605e5c' }}>
+                          No {browseResourceType === 'dek' ? 'DEK locations' : 'KEK locations'} found matching your criteria
+                        </div>
+                      ) : (
+                        getFilteredKeyVaultKeys().map((key, index) => (
+                          <div
+                            key={index}
+                            onClick={() => selectAzureKeyVaultKey(key)}
+                            style={{
+                              padding: '12px 16px',
+                              borderBottom: index < getFilteredKeyVaultKeys().length - 1 ? '1px solid #f1f1f1' : 'none',
+                              borderRadius: 6,
+                              cursor: 'pointer',
+                              backgroundColor: '#f9f9f9',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseOver={e => e.currentTarget.style.backgroundColor = '#f0f8ff'}
+                            onMouseOut={e => e.currentTarget.style.backgroundColor = '#f9f9f9'}
+                          >
+                            <div style={{ fontWeight: 600, fontSize: '14px', color: '#323130', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              {highlightSearchTerm(key.name, keySearchTerm)}
+                              <span style={{
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                padding: '2px 6px',
+                                borderRadius: '3px',
+                                backgroundColor: key.type === 'mhsm' ? '#e1f5fe' : '#fff3e0',
+                                color: key.type === 'mhsm' ? '#0277bd' : '#e65100',
+                                border: `1px solid ${key.type === 'mhsm' ? '#81d4fa' : '#ffb74d'}`,
+                                textTransform: 'uppercase'
+                              }}>
+                                {key.type === 'mhsm' ? 'mHSM' : 'Key Vault'}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#605e5c', marginTop: 2 }}>
+                              <span style={{ fontWeight: 500 }}>{key.keyVault}</span> • {key.resourceGroup} • {key.location} • Version: {key.version}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#8a8886', marginTop: 4, wordBreak: 'break-all' }}>
+                              {key.armId}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{ marginTop: 20, textAlign: 'right' }}>
+              <button
+                onClick={() => setShowAzureResourceSelector(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: 4,
+                  background: '#e1dfdd',
+                  color: '#323130',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Azure Authentication Modal */}
+      {showAzureAuthModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: 8,
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.12)',
+            width: '90%',
+            maxWidth: 480,
+            padding: 0,
+            overflow: 'hidden'
+          }}>
+            {/* Header */}
+            <div style={{
+              padding: '24px 32px',
+              borderBottom: '1px solid #e1dfdd',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  backgroundColor: '#0078d4',
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}>
+                  Az
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, color: '#323130', fontSize: '20px', fontWeight: 600 }}>
+                    Sign in to Azure
+                  </h2>
+                  <div style={{ fontSize: '14px', color: '#605e5c', marginTop: 2 }}>
+                    Access your Azure resources
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={closeAuthModal}
+                disabled={isProcessingAuth}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '20px',
+                  cursor: isProcessingAuth ? 'not-allowed' : 'pointer',
+                  color: '#605e5c',
+                  opacity: isProcessingAuth ? 0.5 : 1
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Content */}
+            <div style={{ padding: '32px' }}>
+              {azureAuthStep === 'login' && (
+                <>
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: '16px', fontWeight: 600, color: '#323130', marginBottom: 8 }}>
+                      Sign in to your account
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#605e5c' }}>
+                      Enter your Azure credentials to continue
+                    </div>
+                  </div>
+
+                  {authError && (
+                    <div style={{
+                      padding: '12px 16px',
+                      backgroundColor: '#fdf2f2',
+                      border: '1px solid #f5c6cb',
+                      borderRadius: 4,
+                      color: '#721c24',
+                      fontSize: '14px',
+                      marginBottom: 20
+                    }}>
+                      {authError}
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ 
+                      display: 'block', 
+                      fontWeight: 600, 
+                      fontSize: '14px', 
+                      color: '#323130', 
+                      marginBottom: 6 
+                    }}>
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      value={azureEmail}
+                      onChange={(e) => setAzureEmail(e.target.value)}
+                      placeholder="user@contoso.com"
+                      disabled={isProcessingAuth}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '1px solid #e1dfdd',
+                        borderRadius: 4,
+                        fontSize: '14px',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        opacity: isProcessingAuth ? 0.7 : 1
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = '#0078d4'}
+                      onBlur={(e) => e.target.style.borderColor = '#e1dfdd'}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 24 }}>
+                    <label style={{ 
+                      display: 'block', 
+                      fontWeight: 600, 
+                      fontSize: '14px', 
+                      color: '#323130', 
+                      marginBottom: 6 
+                    }}>
+                      Password
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        value={azurePassword}
+                        onChange={(e) => setAzurePassword(e.target.value)}
+                        placeholder="Enter your password"
+                        disabled={isProcessingAuth}
+                        style={{
+                          width: '100%',
+                          padding: '12px 48px 12px 16px',
+                          border: '1px solid #e1dfdd',
+                          borderRadius: 4,
+                          fontSize: '14px',
+                          outline: 'none',
+                          boxSizing: 'border-box',
+                          opacity: isProcessingAuth ? 0.7 : 1
+                        }}
+                        onFocus={(e) => e.target.style.borderColor = '#0078d4'}
+                        onBlur={(e) => e.target.style.borderColor = '#e1dfdd'}
+                        onKeyPress={(e) => e.key === 'Enter' && handleAzureLogin()}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        disabled={isProcessingAuth}
+                        style={{
+                          position: 'absolute',
+                          right: 12,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: isProcessingAuth ? 'not-allowed' : 'pointer',
+                          fontSize: '16px',
+                          color: '#605e5c',
+                          opacity: isProcessingAuth ? 0.5 : 1
+                        }}
+                      >
+                        {showPassword ? '🙈' : '👁️'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleAzureLogin}
+                    disabled={isProcessingAuth || !azureEmail || !azurePassword}
+                    style={{
+                      width: '100%',
+                      padding: '14px 20px',
+                      backgroundColor: (isProcessingAuth || !azureEmail || !azurePassword) ? '#f3f2f1' : '#0078d4',
+                      color: (isProcessingAuth || !azureEmail || !azurePassword) ? '#a19f9d' : '#ffffff',
+                      border: 'none',
+                      borderRadius: 4,
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: (isProcessingAuth || !azureEmail || !azurePassword) ? 'not-allowed' : 'pointer',
+                      transition: 'background-color 0.2s ease'
+                    }}
+                  >
+                    {isProcessingAuth ? '🔄 Signing in...' : 'Sign in'}
+                  </button>
+                </>
+              )}
+
+              {azureAuthStep === '2fa' && (
+                <>
+                  <div style={{ marginBottom: 24 }}>
+                    <div style={{ fontSize: '16px', fontWeight: 600, color: '#323130', marginBottom: 8 }}>
+                      Enter verification code
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#605e5c' }}>
+                      We sent a verification code to your authenticator app. Enter the 6-digit code below.
+                    </div>
+                  </div>
+
+                  {authError && (
+                    <div style={{
+                      padding: '12px 16px',
+                      backgroundColor: '#fdf2f2',
+                      border: '1px solid #f5c6cb',
+                      borderRadius: 4,
+                      color: '#721c24',
+                      fontSize: '14px',
+                      marginBottom: 20
+                    }}>
+                      {authError}
+                    </div>
+                  )}
+
+                  <div style={{ marginBottom: 24 }}>
+                    <label style={{ 
+                      display: 'block', 
+                      fontWeight: 600, 
+                      fontSize: '14px', 
+                      color: '#323130', 
+                      marginBottom: 6 
+                    }}>
+                      Verification Code
+                    </label>
+                    <input
+                      type="text"
+                      value={azure2faCode}
+                      onChange={(e) => setAzure2faCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder="000000"
+                      disabled={isProcessingAuth}
+                      maxLength={6}
+                      style={{
+                        width: '100%',
+                        padding: '12px 16px',
+                        border: '1px solid #e1dfdd',
+                        borderRadius: 4,
+                        fontSize: '18px',
+                        textAlign: 'center',
+                        letterSpacing: '8px',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        opacity: isProcessingAuth ? 0.7 : 1
+                      }}
+                      onFocus={(e) => e.target.style.borderColor = '#0078d4'}
+                      onBlur={(e) => e.target.style.borderColor = '#e1dfdd'}
+                      onKeyPress={(e) => e.key === 'Enter' && handleAzure2FA()}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    <button
+                      onClick={() => setAzureAuthStep('login')}
+                      disabled={isProcessingAuth}
+                      style={{
+                        flex: 1,
+                        padding: '14px 20px',
+                        backgroundColor: 'transparent',
+                        color: '#323130',
+                        border: '1px solid #e1dfdd',
+                        borderRadius: 4,
+                        fontSize: '15px',
+                        fontWeight: 500,
+                        cursor: isProcessingAuth ? 'not-allowed' : 'pointer',
+                        opacity: isProcessingAuth ? 0.5 : 1
+                      }}
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={handleAzure2FA}
+                      disabled={isProcessingAuth || azure2faCode.length !== 6}
+                      style={{
+                        flex: 2,
+                        padding: '14px 20px',
+                        backgroundColor: (isProcessingAuth || azure2faCode.length !== 6) ? '#f3f2f1' : '#0078d4',
+                        color: (isProcessingAuth || azure2faCode.length !== 6) ? '#a19f9d' : '#ffffff',
+                        border: 'none',
+                        borderRadius: 4,
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        cursor: (isProcessingAuth || azure2faCode.length !== 6) ? 'not-allowed' : 'pointer',
+                        transition: 'background-color 0.2s ease'
+                      }}
+                    >
+                      {isProcessingAuth ? '🔄 Verifying...' : 'Verify'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {azureAuthStep === 'processing' && (
+                <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                  <div style={{ fontSize: '24px', marginBottom: 16 }}>🔄</div>
+                  <div style={{ fontSize: '16px', fontWeight: 600, color: '#323130', marginBottom: 8 }}>
+                    Completing sign-in...
+                  </div>
+                  <div style={{ fontSize: '14px', color: '#605e5c' }}>
+                    Setting up your Azure connection
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw Consent Confirmation Dialog */}
+      {showWithdrawConfirm !== null && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+            maxWidth: '400px',
+            width: '90%'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#dc3545' }}>
+              Withdraw Consent
+            </h3>
+            <p style={{ margin: '0 0 20px 0', color: '#323130' }}>
+              Are you sure you want to withdraw consent for the dataset "{datasets[showWithdrawConfirm]?.name}"?
+            </p>
+            <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: '#605e5c' }}>
+              This will permanently remove the dataset from the published datasets and cannot be undone.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelWithdrawConsent}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#f3f2f1',
+                  color: '#323130',
+                  border: '1px solid #e1dfdd',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#edebe9'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f3f2f1'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => confirmWithdrawConsent(showWithdrawConfirm)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#c82333'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#dc3545'}
+              >
+                Withdraw Consent
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
